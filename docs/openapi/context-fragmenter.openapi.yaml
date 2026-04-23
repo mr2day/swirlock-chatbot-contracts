@@ -1,0 +1,491 @@
+openapi: 3.1.0
+info:
+  title: Swirlock Context Fragmenter API
+  version: 1.0.0-draft
+  summary: Memory preparation and consolidation contract for the Swirlock chatbot.
+paths:
+  /v1/context/prepare:
+    post:
+      operationId: prepareContext
+      summary: Select and assemble memory fragments for a live turn
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PrepareContextRequest'
+      responses:
+        '200':
+          description: Prepared memory context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrepareContextResponse'
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v1/context/record-turn:
+    post:
+      operationId: recordTurn
+      summary: Record a completed turn for memory processing
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationId'
+        - $ref: '#/components/parameters/XIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordTurnRequest'
+      responses:
+        '202':
+          description: Turn accepted for memory processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordTurnResponse'
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v1/context/sleep-jobs:
+    post:
+      operationId: createSleepJob
+      summary: Create a memory consolidation job
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationId'
+        - $ref: '#/components/parameters/XIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSleepJobRequest'
+      responses:
+        '202':
+          description: Sleep job accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateSleepJobResponse'
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v1/context/sleep-jobs/{jobId}:
+    get:
+      operationId: getSleepJob
+      summary: Get the current status of a sleep job
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/XCorrelationId'
+      responses:
+        '200':
+          description: Sleep job status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetSleepJobResponse'
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+components:
+  parameters:
+    JobId:
+      name: jobId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    XCorrelationId:
+      name: x-correlation-id
+      in: header
+      required: true
+      schema:
+        type: string
+    XIdempotencyKey:
+      name: x-idempotency-key
+      in: header
+      required: false
+      schema:
+        type: string
+  schemas:
+    ApiMeta:
+      type: object
+      required: [requestId, correlationId, apiVersion, servedAt]
+      properties:
+        requestId:
+          type: string
+          format: uuid
+        correlationId:
+          type: string
+        apiVersion:
+          type: string
+          example: v1
+        servedAt:
+          type: string
+          format: date-time
+    ErrorBody:
+      type: object
+      required: [code, message, retryable]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        retryable:
+          type: boolean
+        details:
+          type: object
+          additionalProperties: true
+    ErrorEnvelope:
+      type: object
+      required: [meta, error]
+      properties:
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        error:
+          $ref: '#/components/schemas/ErrorBody'
+    RequestContext:
+      type: object
+      required: [callerService, priority, requestedAt]
+      properties:
+        callerService:
+          type: string
+        priority:
+          type: string
+          enum: [interactive, background, maintenance]
+        requestedAt:
+          type: string
+          format: date-time
+        timeoutMs:
+          type: integer
+          minimum: 1
+        debug:
+          type: boolean
+    TextInputPart:
+      type: object
+      required: [type, text]
+      properties:
+        type:
+          type: string
+          const: text
+        text:
+          type: string
+    ImageInputPart:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          const: image
+        imageId:
+          type: string
+        imageUrl:
+          type: string
+          format: uri
+        mimeType:
+          type: string
+    InputPart:
+      oneOf:
+        - $ref: '#/components/schemas/TextInputPart'
+        - $ref: '#/components/schemas/ImageInputPart'
+    TranscriptTurn:
+      type: object
+      required: [role, content, occurredAt]
+      properties:
+        role:
+          type: string
+          enum: [user, assistant, system]
+        content:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+    MemoryFragment:
+      type: object
+      required:
+        - fragmentId
+        - memoryClass
+        - importance
+        - content
+        - updatedAt
+      properties:
+        fragmentId:
+          type: string
+          format: uuid
+        memoryClass:
+          type: string
+          enum: [short_term, long_term, user_identity, app_identity]
+        importance:
+          type: string
+          enum: [critical, high, medium, low]
+        content:
+          type: string
+        sourceTurnIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        updatedAt:
+          type: string
+          format: date-time
+    PrepareContextRequest:
+      type: object
+      required:
+        - requestContext
+        - session
+        - turn
+      properties:
+        requestContext:
+          $ref: '#/components/schemas/RequestContext'
+        session:
+          type: object
+          required: [sessionId, userId, appId]
+          properties:
+            sessionId:
+              type: string
+              format: uuid
+            userId:
+              type: string
+            appId:
+              type: string
+        turn:
+          type: object
+          required: [turnId, parts, occurredAt]
+          properties:
+            turnId:
+              type: string
+              format: uuid
+            parts:
+              type: array
+              minItems: 1
+              items:
+                $ref: '#/components/schemas/InputPart'
+            occurredAt:
+              type: string
+              format: date-time
+        recentTranscript:
+          type: array
+          items:
+            $ref: '#/components/schemas/TranscriptTurn'
+        options:
+          type: object
+          properties:
+            includeShortTerm:
+              type: boolean
+              default: true
+            includeLongTerm:
+              type: boolean
+              default: true
+            includeUserIdentity:
+              type: boolean
+              default: true
+            includeAppIdentity:
+              type: boolean
+              default: true
+            maxFragments:
+              type: integer
+              minimum: 1
+              default: 24
+            targetTokenBudget:
+              type: integer
+              minimum: 1
+    PrepareContextResponse:
+      type: object
+      required: [meta, data]
+      properties:
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          type: object
+          required:
+            - sessionId
+            - turnId
+            - fragments
+          properties:
+            sessionId:
+              type: string
+              format: uuid
+            turnId:
+              type: string
+              format: uuid
+            fragments:
+              type: array
+              items:
+                $ref: '#/components/schemas/MemoryFragment'
+            retrievalHints:
+              type: array
+              items:
+                type: object
+                required: [kind, text]
+                properties:
+                  kind:
+                    type: string
+                    enum: [entity, time_reference, preference, disambiguation, constraint]
+                  text:
+                    type: string
+            assemblySummary:
+              type: object
+              properties:
+                fragmentCount:
+                  type: integer
+                estimatedTokens:
+                  type: integer
+                notes:
+                  type: string
+    RecordTurnRequest:
+      type: object
+      required:
+        - requestContext
+        - session
+        - completedTurn
+      properties:
+        requestContext:
+          $ref: '#/components/schemas/RequestContext'
+        session:
+          type: object
+          required: [sessionId, userId, appId]
+          properties:
+            sessionId:
+              type: string
+              format: uuid
+            userId:
+              type: string
+            appId:
+              type: string
+        completedTurn:
+          type: object
+          required:
+            - turnId
+            - userMessage
+            - assistantMessage
+          properties:
+            turnId:
+              type: string
+              format: uuid
+            userMessage:
+              type: object
+              required: [parts, occurredAt]
+              properties:
+                parts:
+                  type: array
+                  minItems: 1
+                  items:
+                    $ref: '#/components/schemas/InputPart'
+                occurredAt:
+                  type: string
+                  format: date-time
+            assistantMessage:
+              type: object
+              required: [content, occurredAt]
+              properties:
+                content:
+                  type: string
+                occurredAt:
+                  type: string
+                  format: date-time
+            evidenceIds:
+              type: array
+              items:
+                type: string
+                format: uuid
+    RecordTurnResponse:
+      type: object
+      required: [meta, data]
+      properties:
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          type: object
+          required: [accepted, processingMode]
+          properties:
+            accepted:
+              type: boolean
+            processingMode:
+              type: string
+              enum: [immediate, deferred]
+    CreateSleepJobRequest:
+      type: object
+      required:
+        - requestContext
+        - scope
+      properties:
+        requestContext:
+          $ref: '#/components/schemas/RequestContext'
+        scope:
+          type: object
+          required: [scopeType]
+          properties:
+            scopeType:
+              type: string
+              enum: [all, user, session, app]
+            scopeId:
+              type: string
+        mode:
+          type: string
+          enum: [dry_run, apply]
+          default: apply
+    CreateSleepJobResponse:
+      type: object
+      required: [meta, data]
+      properties:
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          type: object
+          required: [jobId, status, queuedAt]
+          properties:
+            jobId:
+              type: string
+              format: uuid
+            status:
+              type: string
+              enum: [queued]
+            queuedAt:
+              type: string
+              format: date-time
+    GetSleepJobResponse:
+      type: object
+      required: [meta, data]
+      properties:
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          type: object
+          required: [jobId, status]
+          properties:
+            jobId:
+              type: string
+              format: uuid
+            status:
+              type: string
+              enum: [queued, running, completed, failed]
+            startedAt:
+              type: string
+              format: date-time
+            completedAt:
+              type: string
+              format: date-time
+            stats:
+              type: object
+              properties:
+                fragmentsReviewed:
+                  type: integer
+                fragmentsPromoted:
+                  type: integer
+                fragmentsMerged:
+                  type: integer
