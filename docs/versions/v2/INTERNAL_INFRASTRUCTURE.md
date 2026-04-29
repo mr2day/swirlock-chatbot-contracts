@@ -42,6 +42,99 @@ competing places for the same parameter.
 The goal is operational clarity: changing a model, port, upstream URL, or equivalent runtime setting
 must require one edit in one predictable place.
 
+## Local Node/Nest Process Management
+
+Local Node/Nest services that are intended to keep running on LAN machines should run under PM2,
+not under an open development terminal.
+
+This applies to local Windows or workstation/server machines that host Swirlock services directly,
+such as:
+
+- Primary LLM Host
+- Utility LLM Host
+- local RAG Engine instances
+- local Context Fragmenter instances
+- other local NestJS services that are not managed by a cloud platform
+
+Cloud-hosted services are different. Services deployed to Google Cloud should use the native Google
+Cloud runtime and process supervision for that product, such as Cloud Run, GKE, App Engine, Compute
+Engine service management, or another explicitly selected Google-managed deployment path. Do not
+add PM2 inside a Google-managed runtime unless the deployment target is intentionally a plain VM and
+PM2 is the chosen process manager for that VM.
+
+The standard PM2 pattern for local NestJS services is:
+
+```powershell
+npm install -g pm2
+npm install
+npm run build
+pm2 start ecosystem.config.cjs
+pm2 status
+pm2 save
+```
+
+Each local Node/Nest service should provide an `ecosystem.config.cjs` file. That file must import
+the same root runtime config object used by the application itself, as described in
+`Runtime Configuration Source Of Truth`.
+
+The PM2 ecosystem file should run compiled production output, not the Nest watch server. For NestJS
+apps, that usually means:
+
+```js
+module.exports = {
+  apps: [
+    {
+      name: 'service-name',
+      script: 'dist/main.js',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      env,
+    },
+  ],
+};
+```
+
+Model hosts should normally use one process instance unless a host explicitly documents that the
+machine and model runtime can safely run more than one process. Model concurrency should be
+controlled inside the service by model-slot and queue rules, not accidentally multiplied by a process
+manager.
+
+Useful operational commands:
+
+```powershell
+pm2 status
+pm2 logs <service-name>
+pm2 restart <service-name>
+pm2 stop <service-name>
+pm2 delete <service-name>
+```
+
+After changing runtime config or rebuilding code, local operators should restart through the
+ecosystem file and save the process list:
+
+```powershell
+npm run build
+pm2 restart ecosystem.config.cjs --update-env
+pm2 save
+```
+
+For restart after machine reboot, the saved PM2 process list is restored with:
+
+```powershell
+pm2 resurrect
+```
+
+On Linux and macOS, PM2 startup hooks may be used where appropriate. On Windows, PM2's built-in
+startup hook may not be available; a Windows service wrapper, Task Scheduler entry, or current-user
+Startup-folder script may be used to run `pm2 resurrect`. Use a service or elevated scheduled task
+when the service must start before user logon. A current-user startup script is acceptable only when
+the machine's operational model includes a logged-in service user.
+
+The local production rule is: long-running services are started, monitored, restarted, and resurrected
+by the process manager. Development commands such as `nest start --watch`, `npm run start:dev`, or a
+visible terminal running `node dist/main.js` are not the steady-state production run mode.
+
 ## Model Host Principle
 
 A model host is an agnostic model appliance.
