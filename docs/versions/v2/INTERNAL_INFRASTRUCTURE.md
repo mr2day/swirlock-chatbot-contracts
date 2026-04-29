@@ -4,6 +4,44 @@
 
 This document defines guidance for infrastructure services that support the Swirlock ecosystem but do not own product semantics.
 
+## Runtime Configuration Source Of Truth
+
+Every deployable service must have exactly one obvious source of truth for runtime configuration.
+
+Runtime configuration means deploy-time or machine-specific values such as:
+
+- host and port
+- upstream service URLs
+- model IDs and model allow-lists
+- model keep-alive settings
+- feature flags such as image input or thinking defaults
+- request body size limits
+- process-manager environment values
+
+These values must not be duplicated across `.env`, `.env.example`, source-code defaults,
+process-manager config, README examples, and ad hoc launch commands.
+
+For Node services, the preferred local pattern is:
+
+- put a committed root config file in the service repo, such as `host.config.cjs` for a model host
+  or `service.config.cjs` for a domain service
+- export one object containing the runtime values, commonly named `env`
+- import that same object from the app bootstrap/config loader
+- import that same object from the process-manager config, such as `ecosystem.config.cjs`
+- make README setup instructions point to that file as the place to edit runtime settings
+- fail fast during startup if required config values are missing or internally inconsistent
+
+Service implementations should avoid source-code fallback values for deploy-time settings. A missing
+model ID, upstream URL, host, port, or equivalent runtime setting should be treated as a
+configuration error, not silently replaced with a hidden default.
+
+Secrets may still come from a private secret store or an uncommitted local file when needed, but the
+service must still have one named config-loading path. Secret loading must not reintroduce multiple
+competing places for the same parameter.
+
+The goal is operational clarity: changing a model, port, upstream URL, or equivalent runtime setting
+must require one edit in one predictable place.
+
 ## Model Host Principle
 
 A model host is an agnostic model appliance.

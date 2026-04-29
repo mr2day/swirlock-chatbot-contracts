@@ -17,6 +17,17 @@ The `v2` contracts use:
 
 Binary multipart uploads are out of scope for cross-service domain APIs.
 
+## Runtime Configuration
+
+Each service implementation must define runtime configuration in one obvious source of truth and make
+the application runtime and process manager read from that same source. Configuration values such as
+host, port, upstream URLs, model IDs, allow-lists, keep-alive behavior, and process-manager
+environment values must not be copied across `.env`, `.env.example`, source defaults, README
+examples, and deployment files.
+
+For the implementation pattern and failure expectations, see
+`INTERNAL_INFRASTRUCTURE.md#runtime-configuration-source-of-truth`.
+
 ## Required Headers
 
 All inter-service requests must include:
