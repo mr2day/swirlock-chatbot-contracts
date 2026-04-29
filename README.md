@@ -28,7 +28,7 @@ It does not exist to hold:
 
 ## Canonical Sources
 
-The normative sources in this repository are:
+The legacy draft entry point is:
 
 1. `docs/CHATBOT_MANIFEST.md`
 2. `docs/openapi/*.openapi.yaml`
@@ -41,9 +41,18 @@ If there is a conflict:
 - OpenAPI files win for exact field shapes and endpoint details.
 - Markdown files win for architectural intent and boundary interpretation.
 
+## Versioning
+
+Versioned contracts live under `docs/versions/`.
+
+- `docs/versions/v1/` preserves the original draft contracts unchanged.
+- `docs/versions/v2/` contains the revised draft that introduces agnostic Model Host APIs for Primary LLM Host and Utility LLM Host.
+
+See `docs/VERSIONING.md` for compatibility and promotion rules.
+
 ## Current Scope
 
-This repository currently defines draft `v1` contracts for:
+The top-level `docs/` files currently remain the draft `v1` entry point for:
 
 - client-facing chat orchestration
 - memory preparation and memory recording
@@ -53,10 +62,13 @@ This repository currently defines draft `v1` contracts for:
 The Utility LLM and Embedding Service are intentionally not first-class API contracts in this first pass.
 They are internal infrastructure behind other services.
 
+The `v2` draft changes this by defining a generic Model Host API while keeping model hosts agnostic and health-focused.
+
 ## Repository Structure
 
 ```text
 docs/
+  VERSIONING.md
   CHATBOT_MANIFEST.md
   INTERACTION_MODEL.md
   API_CONVENTIONS.md
@@ -65,6 +77,9 @@ docs/
     context-fragmenter.openapi.yaml
     rag-engine.openapi.yaml
     main-llm-server.openapi.yaml
+  versions/
+    v1/
+    v2/
 ```
 
 ## Working Rule
