@@ -13,16 +13,13 @@ Client
   |
   v
 Chat Orchestrator
-  |------> Context Fragmenter
-  |------> RAG Engine
+  |------> Context Fragmenter --------\
+  |------> RAG Engine ----------------+----> Utility LLM Host
   |------> Primary LLM Host
+  |------> Utility LLM Host (support/fallback only)
   |
   v
 Client response
-
-RAG Engine ------------\
-                       v
-Context Fragmenter ---> Utility LLM Host
 
 Scheduler/Admin
   |
@@ -42,6 +39,7 @@ Owns:
 - per-turn coordination
 - deciding when to call Context Fragmenter
 - deciding when to call RAG Engine
+- deciding whether original user images should be passed to the final-answer model host
 - preparing prompts or messages for model hosts
 - returning final responses to clients
 
@@ -96,7 +94,7 @@ Does not own:
 Owns:
 
 - primary model availability
-- inference for the primary model's advertised input capabilities
+- inference for the primary model's advertised input capabilities, including image input when advertised
 - model health and lifecycle protection
 - model health/status
 
@@ -108,14 +106,14 @@ Does not own:
 - memory selection
 - retrieval selection
 
-The Chat Orchestrator commonly uses this host for final response inference, but the host itself remains purpose-agnostic.
+The Chat Orchestrator normally uses this host for final response inference. When the hosted model advertises `imageInput: true`, the Orchestrator may pass original user images directly to it for final answering. The host itself remains purpose-agnostic.
 
 ### Utility LLM Host
 
 Owns:
 
-- utility multimodal model availability
-- text and image inference
+- utility model availability
+- inference for the utility model's advertised input capabilities, including image input when advertised
 - model health and lifecycle protection
 - model health/status
 
@@ -129,6 +127,8 @@ Does not own:
 
 Any internal app may call this host when it needs the utility model, subject to priority and capacity rules.
 
+The Utility LLM Host is not the only vision-capable service. It is support capacity for internal cognition, not the owner of image semantics.
+
 ## Allowed Direct Calls
 
 Allowed:
@@ -137,6 +137,7 @@ Allowed:
 - `Chat Orchestrator -> Context Fragmenter`
 - `Chat Orchestrator -> RAG Engine`
 - `Chat Orchestrator -> Primary LLM Host`
+- `Chat Orchestrator -> Utility LLM Host` for support cognition or explicitly allowed degraded final-answer fallback
 - `RAG Engine -> Utility LLM Host`
 - `Context Fragmenter -> Utility LLM Host`
 - `Scheduler/Admin -> Context Fragmenter`
@@ -156,17 +157,29 @@ Forbidden unless the architecture is intentionally revised:
 - `Client -> RAG Engine`
 - `Client -> model hosts`
 
-## Turn Lifecycle
+## Canonical User Message Route
 
-1. Client submits a user message to the Chat Orchestrator.
-2. Chat Orchestrator requests memory context from Context Fragmenter.
-3. If the user input includes images, Chat Orchestrator decides whether to route them to Utility LLM Host for image observations or directly to a model host that advertises `imageInput: true`.
-4. Chat Orchestrator decides whether retrieval is needed and calls RAG Engine when needed.
-5. RAG Engine may call Utility LLM Host for query/evidence support.
-6. Chat Orchestrator prepares final model input.
-7. Chat Orchestrator calls Primary LLM Host.
-8. Chat Orchestrator returns the final response to the client.
-9. Chat Orchestrator records the completed turn with Context Fragmenter.
+This route defines how a user message moves through the system. Agents developing any ecosystem app should preserve this ownership model unless the contracts are intentionally revised.
+
+1. Client submits a user message to the Chat Orchestrator. The message may contain text, images, attachments, and client-side metadata.
+2. Chat Orchestrator validates the session and turn, assigns or propagates a correlation ID, and normalizes media references without interpreting the task semantics inside a model host.
+3. Chat Orchestrator requests relevant memory context and retrieval hints from Context Fragmenter. Context Fragmenter may call Utility LLM Host for salience, classification, or memory-support inference, but Context Fragmenter owns all memory decisions.
+4. Chat Orchestrator decides whether retrieval is needed. If retrieval is needed, it calls RAG Engine with the normalized user input, memory hints, and media references relevant to retrieval.
+5. RAG Engine performs retrieval and evidence packaging. It may call Utility LLM Host for query rewriting, image-derived retrieval intent, OCR-like observations, or evidence shaping, but RAG Engine owns all retrieval decisions.
+6. Chat Orchestrator assembles the final model input from the user message, selected memory, evidence package, instructions, and media that should be visible to the final-answer model.
+7. Chat Orchestrator calls Primary LLM Host for final response inference. If the user message includes an image and Primary LLM Host advertises `imageInput: true`, the Orchestrator should pass the original image directly to Primary LLM Host when the final answer benefits from visual understanding.
+8. Chat Orchestrator returns the final assistant response to the client, including citations, diagnostics, or degraded-mode indicators when the caller contract requires them.
+9. Chat Orchestrator records the completed turn with Context Fragmenter. Context Fragmenter may queue background memory extraction, compression, or sleep work that uses Utility LLM Host at low or omitted model-host priority.
+
+## Routing Rules
+
+- Route by responsibility, not by capability. Two model hosts may expose the same model and the same multimodal capabilities while serving different operational roles.
+- Use Primary LLM Host for normal final user-facing answer generation.
+- Use Utility LLM Host for support cognition: retrieval support, memory support, image-derived search intent, classification, compression, evidence shaping, and background jobs.
+- Do not require an image to pass through Utility LLM Host before final answering when Primary LLM Host can accept the original image.
+- Do not let model hosts decide product semantics. The caller owns prompt construction, task policy, and interpretation of model output.
+- Degraded final-answer fallback to Utility LLM Host is allowed only when the Orchestrator explicitly supports that mode and exposes it in diagnostics or operational logs.
+- Live user-path calls should provide higher numeric model-host priority than background memory or sleep jobs.
 
 ## Background Lifecycle
 

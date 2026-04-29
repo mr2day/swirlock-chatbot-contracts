@@ -27,7 +27,9 @@ This separation keeps responsibilities inspectable, replaceable, and commerciall
 - Model hosts are agnostic inference appliances.
 - Retrieval and memory are different concerns.
 - The final answering workflow belongs to the Orchestrator, not the model host.
+- Final user-facing answer generation should normally use the Primary LLM Host.
 - Support cognition should use the Utility LLM Host instead of overloading the primary model.
+- Equal model-host capabilities do not collapse service ownership.
 - Service contracts should be explicit and traceable.
 
 ## Hard Hardware Rule
@@ -47,11 +49,11 @@ Implications:
 Role:
 
 - host the Primary LLM Host
-- expose primary model inference
+- expose primary model inference, including image input when the hosted model supports it
 
 Current intended model:
 
-- Gemma 4 (`gemma4:e4b`) on Ollama, with vision enabled when available
+- Gemma 4 (`gemma4:e4b`) on Ollama, with text and image input enabled
 
 This machine should not own retrieval, memory, or orchestration logic.
 
@@ -60,14 +62,14 @@ This machine should not own retrieval, memory, or orchestration logic.
 Role:
 
 - host the Utility LLM Host
-- expose text-plus-image model inference
+- expose the same generic model-host capability profile as the Primary LLM Host
 - support RAG Engine, Context Fragmenter, and other internal apps
 
 Current intended model:
 
-- Qwen 3.5 (`qwen3.5:9b`) multimodal on Ollama
+- Gemma 4 (`gemma4:e4b`) on Ollama, with text and image input enabled
 
-This machine may host multiple apps, but only one neural model service.
+This machine may host multiple non-neural apps, but only one neural model service.
 
 ### Raspberry Pi 5
 
@@ -85,7 +87,7 @@ Current intended model:
 
 The Chat Orchestrator owns the user-turn lifecycle.
 
-It coordinates memory, retrieval, image pre-processing, final prompt preparation, model-host calls, and final client responses.
+It coordinates memory, retrieval, final prompt preparation, model-host calls, direct image routing to the Primary LLM Host when useful for final answering, and final client responses.
 
 ### RAG Engine
 
@@ -105,6 +107,8 @@ The Primary LLM Host owns the health and serving boundary for the primary model.
 
 It accepts the input types advertised by its model-host capabilities and returns text output.
 
+In the normal live user path, the Orchestrator uses this host for final response inference. If the final answer benefits from a user image and this host advertises `imageInput: true`, the Orchestrator should pass the original image directly to this host instead of requiring a Utility LLM Host pre-pass.
+
 It does not know whether the caller is performing chat, final answering, summarization, classification, or another task.
 
 ### Utility LLM Host
@@ -112,6 +116,8 @@ It does not know whether the caller is performing chat, final answering, summari
 The Utility LLM Host owns the health and serving boundary for the utility multimodal model.
 
 It accepts text and optional image input and returns text output.
+
+It is not the unique vision node. It is the support model-host capacity used for RAG support, memory support, image-derived retrieval support, background work, and explicitly allowed degraded final-answer fallback.
 
 It does not know whether the caller is performing RAG support, memory support, image understanding, chat, or another task.
 
@@ -132,11 +138,19 @@ Model hosts must protect model availability through:
 - process-level request body protection
 - health/status reporting
 
-## Shared Utility Model Principle
+## Shared Model Host Capability, Different Operational Role
 
-RAG Engine and Context Fragmenter may both depend on the Utility LLM Host.
+Primary LLM Host and Utility LLM Host may run the same model with the same advertised capabilities.
 
-This is acceptable because:
+That capability symmetry does not change ownership:
+
+- the Chat Orchestrator owns the final user-facing turn
+- the Primary LLM Host is the normal final-answer inference host
+- RAG Engine owns retrieval and evidence preparation
+- Context Fragmenter owns memory selection and memory maintenance
+- Utility LLM Host is support capacity for internal reasoning tasks
+
+RAG Engine and Context Fragmenter may both depend on the Utility LLM Host. This is acceptable because:
 
 - the host is infrastructure
 - caller services own semantics
@@ -147,13 +161,17 @@ priority. Omitted priority is the lowest model-host priority.
 
 ## Multimodal Role
 
-Multimodality belongs primarily to the utility side.
+Multimodality is available wherever a model host advertises `imageInput: true`.
 
-Images may be inspected by the Utility LLM Host and converted into text observations when
-downstream services need text-only inputs. If the Primary LLM Host advertises `imageInput: true`,
-the Orchestrator may also route image input directly to it when that is the intended workflow.
+For the normal user-answer path, images should be routed by the Orchestrator directly to the Primary
+LLM Host when the final answer benefits from seeing the original image.
 
-Model-host capabilities, not host names, define whether image input is accepted.
+Images may still be inspected by the Utility LLM Host and converted into text observations when RAG,
+memory, or another internal service needs image-derived support data, such as retrieval search intent,
+object observations, OCR-like descriptions, or memory classification signals.
+
+Model-host capabilities define whether image input is accepted. Service ownership defines why the
+image is being interpreted and which service is allowed to make decisions from that interpretation.
 
 ## Canonical Naming
 
@@ -177,6 +195,7 @@ Swirlock `v2` is a distributed chatbot architecture in which:
 - domain services own product semantics
 - model hosts own model health and inference only
 - the Primary LLM Host exposes the capabilities of its hosted model
-- the Utility LLM Host is multimodal input and text output
+- the Utility LLM Host may expose the same capabilities as the Primary LLM Host
+- Primary and Utility model hosts are separated by operational role, not necessarily by model family
 - the Orchestrator coordinates final answer generation
 - RAG and memory remain separate domains

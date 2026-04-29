@@ -5,8 +5,13 @@ Version `v2` keeps the service boundaries from `v1` but clarifies that LLM-servi
 The important change is the introduction of a generic Model Host API:
 
 - Primary LLM Host implements the Model Host API with the capabilities of its hosted model.
-- Utility LLM Host implements the Model Host API with text and image input.
+- Utility LLM Host implements the same generic Model Host API and may expose the same capabilities.
 - Model hosts protect model health and expose inference; they do not own chat, RAG, memory, or final-answer semantics.
+
+In the current local architecture, Primary LLM Host and Utility LLM Host may both run `gemma4:e4b`
+with text and image input enabled. They are separated by operational role, not by semantic ownership:
+Primary is the normal final-answer inference host, while Utility is support capacity for RAG, memory,
+image-derived retrieval support, and background cognition.
 
 ## Normative Sources
 

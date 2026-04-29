@@ -158,6 +158,9 @@ It does not own:
 - business task interpretation
 - prompt policy beyond local safety/system guardrails
 
+Two model hosts may run the same model and advertise the same capabilities. They remain separate
+infrastructure endpoints because callers use them for different operational roles.
+
 ## Model Host Profiles
 
 ### Primary LLM Host
@@ -165,7 +168,7 @@ It does not own:
 Profile:
 
 - text input
-- optional image input when the hosted model supports vision
+- image input when advertised by the hosted model
 - text output
 - no image output
 
@@ -175,14 +178,15 @@ Typical caller:
 
 Common usage:
 
-- final response inference from prepared input
+- final user-facing response inference from prepared input
+- direct interpretation of original user images when final answering benefits from vision
 
 ### Utility LLM Host
 
 Profile:
 
 - text input
-- image input
+- image input when advertised by the hosted model
 - text output
 - no image output
 
@@ -190,18 +194,46 @@ Typical callers:
 
 - RAG Engine
 - Context Fragmenter
-- Chat Orchestrator when image understanding is needed before final inference
+- Chat Orchestrator for support cognition or explicitly allowed degraded final-answer fallback
 
 Common usage:
 
-- image observations
+- image-derived retrieval support
 - query rewriting
 - classification
 - compression
 - evidence shaping
 - memory support
+- background memory and sleep jobs
 
 The Utility LLM Host does not know which of these tasks it is serving. The caller owns the prompt and interpretation.
+
+Primary LLM Host and Utility LLM Host may be implemented by the same codebase, expose the same
+Model Host API, and run the same model ID, such as `gemma4:e4b`. They should still be configured and
+documented as separate deployed services because the Primary host protects the live final-answer
+path, while the Utility host absorbs support and background cognition.
+
+## Responsibility-Based Routing
+
+Routing must be based on service responsibility, not just on which host can technically process an
+input.
+
+Normal routing:
+
+- Chat Orchestrator sends final-answer inference to Primary LLM Host.
+- Chat Orchestrator may pass original user images directly to Primary LLM Host when it advertises
+  `imageInput: true`.
+- RAG Engine sends retrieval-support inference to Utility LLM Host.
+- Context Fragmenter sends memory-support and sleep inference to Utility LLM Host.
+- Background jobs should use low or omitted model-host priority.
+
+Avoid these patterns:
+
+- forcing every image through Utility LLM Host before final answering
+- moving retrieval or memory decisions into either model host
+- using Primary LLM Host for background support work unless explicitly elevated
+- using Utility LLM Host for normal final answers unless the Orchestrator is in an explicit degraded
+  fallback mode
 
 ## Safety Requirements
 
