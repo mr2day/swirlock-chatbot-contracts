@@ -4,7 +4,7 @@ Version `v2` keeps the service boundaries from `v1` but clarifies that LLM-servi
 
 The important change is the introduction of a generic Model Host API:
 
-- Primary LLM Host implements the Model Host API with text input only.
+- Primary LLM Host implements the Model Host API with the capabilities of its hosted model.
 - Utility LLM Host implements the Model Host API with text and image input.
 - Model hosts protect model health and expose inference; they do not own chat, RAG, memory, or final-answer semantics.
 

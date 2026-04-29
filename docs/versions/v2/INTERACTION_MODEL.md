@@ -96,7 +96,7 @@ Does not own:
 Owns:
 
 - primary model availability
-- text-only inference
+- inference for the primary model's advertised input capabilities
 - model health and lifecycle protection
 - model health/status
 
@@ -160,7 +160,7 @@ Forbidden unless the architecture is intentionally revised:
 
 1. Client submits a user message to the Chat Orchestrator.
 2. Chat Orchestrator requests memory context from Context Fragmenter.
-3. If the user input includes images, Chat Orchestrator or a downstream service may call Utility LLM Host for image observations.
+3. If the user input includes images, Chat Orchestrator decides whether to route them to Utility LLM Host for image observations or directly to a model host that advertises `imageInput: true`.
 4. Chat Orchestrator decides whether retrieval is needed and calls RAG Engine when needed.
 5. RAG Engine may call Utility LLM Host for query/evidence support.
 6. Chat Orchestrator prepares final model input.

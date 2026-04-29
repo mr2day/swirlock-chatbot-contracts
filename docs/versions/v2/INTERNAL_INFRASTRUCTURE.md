@@ -34,8 +34,8 @@ It does not own:
 Profile:
 
 - text input
+- optional image input when the hosted model supports vision
 - text output
-- no image input
 - no image output
 
 Typical caller:

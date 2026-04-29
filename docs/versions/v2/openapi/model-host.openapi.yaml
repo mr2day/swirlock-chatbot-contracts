@@ -494,6 +494,7 @@ components:
           type: object
           required:
             - modelId
+            - availableModels
             - ready
             - loaded
             - keepAlive
@@ -502,6 +503,10 @@ components:
           properties:
             modelId:
               type: string
+            availableModels:
+              type: array
+              items:
+                type: string
             ready:
               type: boolean
             loaded:

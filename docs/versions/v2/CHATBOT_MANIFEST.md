@@ -47,11 +47,11 @@ Implications:
 Role:
 
 - host the Primary LLM Host
-- expose text-only model inference
+- expose primary model inference
 
 Current intended model:
 
-- Gemma 4 (`gemma4:e4b`) on Ollama
+- Gemma 4 (`gemma4:e4b`) on Ollama, with vision enabled when available
 
 This machine should not own retrieval, memory, or orchestration logic.
 
@@ -103,7 +103,7 @@ It may use the Utility LLM Host for salience detection, memory extraction, memor
 
 The Primary LLM Host owns the health and serving boundary for the primary model.
 
-It accepts text input and returns text output.
+It accepts the input types advertised by its model-host capabilities and returns text output.
 
 It does not know whether the caller is performing chat, final answering, summarization, classification, or another task.
 
@@ -149,9 +149,11 @@ priority. Omitted priority is the lowest model-host priority.
 
 Multimodality belongs primarily to the utility side.
 
-Images should be inspected by the Utility LLM Host and converted into text observations when downstream services need text-only inputs.
+Images may be inspected by the Utility LLM Host and converted into text observations when
+downstream services need text-only inputs. If the Primary LLM Host advertises `imageInput: true`,
+the Orchestrator may also route image input directly to it when that is the intended workflow.
 
-The Primary LLM Host remains text-only unless the architecture is intentionally revised.
+Model-host capabilities, not host names, define whether image input is accepted.
 
 ## Canonical Naming
 
@@ -174,7 +176,7 @@ Swirlock `v2` is a distributed chatbot architecture in which:
 
 - domain services own product semantics
 - model hosts own model health and inference only
-- the Primary LLM Host is text-only
+- the Primary LLM Host exposes the capabilities of its hosted model
 - the Utility LLM Host is multimodal input and text output
 - the Orchestrator coordinates final answer generation
 - RAG and memory remain separate domains
