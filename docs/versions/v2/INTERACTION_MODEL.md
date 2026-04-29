@@ -97,7 +97,7 @@ Owns:
 
 - primary model availability
 - text-only inference
-- model safety limits
+- model health and lifecycle protection
 - model health/status
 
 Does not own:
@@ -116,7 +116,7 @@ Owns:
 
 - utility multimodal model availability
 - text and image inference
-- model safety limits
+- model health and lifecycle protection
 - model health/status
 
 Does not own:
@@ -170,4 +170,6 @@ Forbidden unless the architecture is intentionally revised:
 
 ## Background Lifecycle
 
-Context Fragmenter may call Utility LLM Host during background memory processing or sleep. Those calls should use `background` or `maintenance` priority so live user-path work can be protected.
+Context Fragmenter may call Utility LLM Host during background memory processing or sleep. Those
+calls should either omit model-host priority or use a low numeric priority so live user-path work
+can submit a higher numeric priority and move ahead in the model-host queue.

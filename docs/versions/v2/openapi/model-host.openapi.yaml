@@ -5,8 +5,9 @@ info:
   summary: Agnostic model-host contract for Primary LLM Host and Utility LLM Host.
   description: >
     A Model Host exposes one local model for inference and operational health.
-    It owns model safety, readiness, limits, and lifecycle behavior. It does not
-    own chat, RAG, memory, prompt policy, or business task semantics.
+    It owns model loading, keep-alive, queueing, lifecycle behavior, and
+    health/status reporting. It does not own chat, RAG, memory, prompt policy,
+    or business task semantics.
 paths:
   /v2/infer:
     post:
@@ -33,6 +34,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /v2/infer/stream:
+    get:
+      operationId: streamInfer
+      summary: Open a WebSocket inference stream
+      description: |
+        Upgrade this route to a WebSocket connection. After the connection opens,
+        the client sends exactly one `StreamInferMessage`. The server responds
+        with one JSON `StreamEvent` per WebSocket message and closes the
+        connection after `done` or `error`.
+
+        The stream is the preferred transport when callers want to display
+        thinking text, response chunks, or queue progress in real time.
+      responses:
+        '101':
+          description: WebSocket connection accepted
+        default:
+          description: WebSocket handshake error
   /v2/health:
     get:
       operationId: getHealth
@@ -55,7 +73,7 @@ paths:
   /v2/model/status:
     get:
       operationId: getModelStatus
-      summary: Return hosted model status, capabilities, limits, and capacity
+      summary: Return hosted model status, capabilities, and capacity
       parameters:
         - $ref: '#/components/parameters/XCorrelationId'
       responses:
@@ -141,7 +159,7 @@ components:
           type: string
         apiVersion:
           type: string
-          example: v2
+          const: v2
         servedAt:
           type: string
           format: date-time
@@ -156,9 +174,7 @@ components:
             - validation_failed
             - upstream_unavailable
             - model_unavailable
-            - model_overloaded
             - limit_exceeded
-            - timeout
             - internal_error
         message:
           type: string
@@ -177,19 +193,21 @@ components:
           $ref: '#/components/schemas/ErrorBody'
     RequestContext:
       type: object
-      required: [callerService, priority, requestedAt]
+      required: [callerService, requestedAt]
       properties:
         callerService:
           type: string
+          description: Logical caller name.
         priority:
-          type: string
-          enum: [interactive, background, maintenance]
+          type: number
+          description: >
+            Optional model-host queue priority. Higher finite numbers run first.
+            If omitted, the request is lower priority than every request that
+            provides a finite priority number. Equal priorities run in arrival
+            order.
         requestedAt:
           type: string
           format: date-time
-        timeoutMs:
-          type: integer
-          minimum: 1
         debug:
           type: boolean
     TextInputPart:
@@ -213,7 +231,7 @@ components:
           const: image
         imageBase64:
           type: string
-          description: Base64 image payload. Data URL prefixes are allowed if the host supports them.
+          description: Base64 image payload. Data URL prefixes are allowed.
         imageUrl:
           type: string
           format: uri
@@ -235,26 +253,19 @@ components:
     InferenceOptions:
       type: object
       properties:
-        temperature:
-          type: number
-          minimum: 0
-        topP:
-          type: number
-          minimum: 0
-          maximum: 1
-        maxOutputTokens:
-          type: integer
-          minimum: 1
-        stopSequences:
-          type: array
-          items:
-            type: string
-        seed:
-          type: integer
         responseFormat:
           type: string
           enum: [text, json]
           default: text
+        thinking:
+          type: boolean
+          description: Enable model thinking output when the hosted model and runtime support it.
+        ollama:
+          type: object
+          additionalProperties: true
+          description: >
+            Ollama runtime options passed through by the model host. Callers own
+            task-level policy for these options.
     InferRequest:
       type: object
       required: [requestContext, input]
@@ -265,18 +276,6 @@ components:
           $ref: '#/components/schemas/InferenceInput'
         options:
           $ref: '#/components/schemas/InferenceOptions'
-    Usage:
-      type: object
-      properties:
-        inputTokens:
-          type: integer
-          minimum: 0
-        outputTokens:
-          type: integer
-          minimum: 0
-        totalTokens:
-          type: integer
-          minimum: 0
     InferResponse:
       type: object
       required: [meta, data]
@@ -301,10 +300,147 @@ components:
             generatedAt:
               type: string
               format: date-time
-            usage:
-              $ref: '#/components/schemas/Usage'
             appliedOptions:
               $ref: '#/components/schemas/InferenceOptions'
+    StreamInferMessage:
+      type: object
+      required: [type, correlationId, request]
+      properties:
+        type:
+          type: string
+          const: infer
+        correlationId:
+          type: string
+        request:
+          $ref: '#/components/schemas/InferRequest'
+    QueueWaitInfo:
+      type: object
+      required: [position, requestsAhead, queueDepth, defaultPriority]
+      properties:
+        position:
+          type: integer
+          minimum: 1
+          description: Current 1-based position inside the waiting queue.
+        requestsAhead:
+          type: integer
+          minimum: 0
+          description: Active request plus queued requests ahead of this request.
+        queueDepth:
+          type: integer
+          minimum: 0
+          description: Current total queued requests.
+        defaultPriority:
+          type: boolean
+          description: True when the caller omitted requestContext.priority.
+        priority:
+          type: number
+          description: Present only when the caller provided requestContext.priority.
+        averageRequestDurationMs:
+          type: integer
+          minimum: 0
+        estimatedWaitMs:
+          type: integer
+          minimum: 0
+        estimatedStartAt:
+          type: string
+          format: date-time
+    StreamAcceptedEvent:
+      type: object
+      required: [type, meta]
+      properties:
+        type:
+          type: string
+          const: accepted
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+    StreamQueuedEvent:
+      type: object
+      required: [type, meta, data]
+      properties:
+        type:
+          type: string
+          const: queued
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          $ref: '#/components/schemas/QueueWaitInfo'
+    StreamStartedEvent:
+      type: object
+      required: [type, meta]
+      properties:
+        type:
+          type: string
+          const: started
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+    StreamThinkingEvent:
+      type: object
+      required: [type, meta, data]
+      properties:
+        type:
+          type: string
+          const: thinking
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          type: object
+          required: [text]
+          properties:
+            text:
+              type: string
+    StreamChunkEvent:
+      type: object
+      required: [type, meta, data]
+      properties:
+        type:
+          type: string
+          const: chunk
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          type: object
+          required: [text]
+          properties:
+            text:
+              type: string
+    StreamDoneEvent:
+      type: object
+      required: [type, meta, data]
+      properties:
+        type:
+          type: string
+          const: done
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          type: object
+          required: [finishReason, appliedOptions]
+          properties:
+            finishReason:
+              type: string
+              enum: [stop, length, error]
+            appliedOptions:
+              $ref: '#/components/schemas/InferenceOptions'
+    StreamErrorEvent:
+      type: object
+      required: [type, meta, error]
+      properties:
+        type:
+          type: string
+          const: error
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        error:
+          $ref: '#/components/schemas/ErrorBody'
+    StreamEvent:
+      oneOf:
+        - $ref: '#/components/schemas/StreamAcceptedEvent'
+        - $ref: '#/components/schemas/StreamQueuedEvent'
+        - $ref: '#/components/schemas/StreamStartedEvent'
+        - $ref: '#/components/schemas/StreamThinkingEvent'
+        - $ref: '#/components/schemas/StreamChunkEvent'
+        - $ref: '#/components/schemas/StreamDoneEvent'
+        - $ref: '#/components/schemas/StreamErrorEvent'
     ModelCapabilities:
       type: object
       required: [textInput, imageInput, textOutput, imageOutput]
@@ -317,48 +453,20 @@ components:
           type: boolean
         imageOutput:
           type: boolean
-    ModelLimits:
-      type: object
-      required:
-        - maxTextChars
-        - maxImages
-        - maxImageBytes
-        - maxOutputTokens
-        - maxConcurrentRequests
-        - requestTimeoutMs
-      properties:
-        maxTextChars:
-          type: integer
-          minimum: 1
-        maxImages:
-          type: integer
-          minimum: 0
-        maxImageBytes:
-          type: integer
-          minimum: 0
-        maxOutputTokens:
-          type: integer
-          minimum: 1
-        maxContextTokens:
-          type: integer
-          minimum: 1
-        maxConcurrentRequests:
-          type: integer
-          minimum: 1
-        requestTimeoutMs:
-          type: integer
-          minimum: 1
     ModelCapacity:
       type: object
-      required: [activeRequests, maxConcurrentRequests]
+      required: [activeRequests, modelSlots, queueDepth]
       properties:
         activeRequests:
           type: integer
           minimum: 0
-        maxConcurrentRequests:
+        modelSlots:
           type: integer
           minimum: 1
         queueDepth:
+          type: integer
+          minimum: 0
+        averageRequestDurationMs:
           type: integer
           minimum: 0
     HealthResponse:
@@ -388,8 +496,8 @@ components:
             - modelId
             - ready
             - loaded
+            - keepAlive
             - capabilities
-            - limits
             - capacity
           properties:
             modelId:
@@ -402,8 +510,6 @@ components:
               type: string
             capabilities:
               $ref: '#/components/schemas/ModelCapabilities'
-            limits:
-              $ref: '#/components/schemas/ModelLimits'
             capacity:
               $ref: '#/components/schemas/ModelCapacity'
             runtime:

@@ -32,9 +32,10 @@ All `POST` request bodies should contain a top-level `requestContext` object.
 Canonical fields:
 
 - `callerService`: logical caller name
-- `priority`: `interactive`, `background`, or `maintenance`
+- `priority`: optional priority hint; exact type is service-specific
 - `requestedAt`: ISO 8601 UTC timestamp
-- `timeoutMs`: optional caller timeout hint
+- `timeoutMs`: optional caller timeout hint only where a specific service contract defines it; model
+  hosts do not impose elapsed-time limits
 - `debug`: optional boolean
 
 ## Success Response Shape
@@ -67,7 +68,7 @@ Errors use:
   },
   "error": {
     "code": "validation_failed",
-    "message": "maxOutputTokens exceeds host limit",
+    "message": "requestContext.requestedAt must be an ISO 8601 UTC timestamp",
     "retryable": false,
     "details": {}
   }
@@ -76,15 +77,40 @@ Errors use:
 
 ## Priority Semantics
 
-Priorities are:
+Domain services may use named priorities where the contract defines them:
 
 - `interactive`: live user-path work
 - `background`: deferred non-urgent work
 - `maintenance`: scheduled system work
 
-Services under load should prefer `interactive` work over `background` and `maintenance` work.
+Services under load should prefer live user-path work over background and maintenance work.
 
-Model hosts may reject or defer lower-priority requests when accepting them would harm model availability for interactive work.
+Model hosts use numeric priority because they are agnostic model appliances. For model-host
+requests, higher finite numbers run first. If `requestContext.priority` is omitted, the request is
+treated as lower priority than every request that provides a finite priority number. Equal-priority
+requests, including omitted-priority requests, run in arrival order.
+
+## Model Host Queue Events
+
+The model-host WebSocket stream accepts one inference request per connection. The client sends a
+`StreamInferMessage` with:
+
+- `type`: `infer`
+- `correlationId`: stable request or turn id
+- `request`: an `InferRequest`
+
+If the model slot is busy, the request remains accepted and the host sends `queued` events while it
+waits. These events let the client decide whether to keep waiting or close the WebSocket. A queued
+request is not rejected and does not need a retry registration number.
+
+Queued event data contains:
+
+- `position`: current 1-based position inside the waiting queue
+- `requestsAhead`: active request plus queued requests ahead
+- `queueDepth`: current total queued requests
+- `defaultPriority`: `true` when the caller omitted `requestContext.priority`
+- `priority`: present only when the caller provided `requestContext.priority`
+- `averageRequestDurationMs`, `estimatedWaitMs`, and `estimatedStartAt` when recent runtime samples exist
 
 ## Media References
 
@@ -99,18 +125,17 @@ Model Host APIs may additionally accept direct base64 image payloads because the
 
 ## Model Host Safety
 
-Model hosts own operational safety limits, including:
+Model hosts own model-health protections, including:
 
-- max text size
-- max image count
-- max image bytes
-- max output tokens
-- max context size
-- request timeout
-- max concurrent requests
 - load/preload/unload behavior
+- keep-alive behavior
+- single-model-slot serialization, unless the host explicitly documents otherwise
+- queue reporting
+- process-level request body protection
 
-Caller-supplied generation options are hints. A model host may clamp or reject any option that exceeds configured limits.
+Model hosts should not invent task-level limits such as output token caps, elapsed-time caps, or
+domain-specific input limits unless the hosted model, transport, or machine health requires them.
+Caller services own task semantics and caller-side policy.
 
 ## Authentication
 

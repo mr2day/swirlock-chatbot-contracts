@@ -15,9 +15,8 @@ It owns:
 - model unloading
 - inference transport
 - health/readiness reporting
-- model safety limits
-- concurrency protection
-- timeout behavior
+- model-health protection
+- model-slot serialization and queue reporting
 
 It does not own:
 
@@ -75,18 +74,29 @@ The Utility LLM Host does not know which of these tasks it is serving. The calle
 
 ## Safety Requirements
 
-Every model host should enforce:
+Every model host should protect the hosted model and local machine through:
 
-- maximum text input size
-- maximum image count
-- maximum image byte size
-- maximum output tokens
-- maximum concurrent requests
-- request timeout
-- safe generation option whitelist
 - keep-alive behavior
+- preload/unload lifecycle behavior
+- one active model request at a time unless the host explicitly documents more slots
+- a visible queue for additional requests
+- process-level request body protection
 
-Caller options are not authoritative. The host may clamp or reject them.
+Model hosts should not impose task-level limits such as output token caps or elapsed-time caps.
+Callers own task policy and may pass model-runtime options when the host contract allows it.
+
+## Queue Requirements
+
+Model hosts with a single model slot should queue additional requests. Queue order is:
+
+1. higher numeric `requestContext.priority` first
+2. earlier arrival first when priorities are equal
+
+If `requestContext.priority` is omitted, the request is treated as lower priority than every request
+that provides a finite priority number.
+
+Streaming model-host APIs should report queue position, queue depth, requests ahead, and estimated
+start time when enough recent runtime samples exist. Queue estimates are advisory.
 
 ## Health Requirements
 
@@ -97,9 +107,10 @@ Every model host should expose:
 - configured model ID
 - loaded/running state
 - capabilities
-- configured limits
 - active request count
-- queue depth if queueing exists
+- model slot count
+- queue depth
+- average request duration when available
 
 ## Media Handling
 

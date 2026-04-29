@@ -121,17 +121,15 @@ The Embedding Service owns vectorization.
 
 It should remain isolated from chat, retrieval policy, memory policy, and general LLM inference.
 
-## Model Host Safety
+## Model Host Protection
 
 Model hosts must protect model availability through:
 
 - keep-alive/preload behavior
-- request size limits
-- output token limits
-- image count and byte limits where applicable
-- concurrency limits
-- request timeouts
-- option whitelisting and clamping
+- unload lifecycle behavior
+- one active model request at a time unless a host explicitly documents more slots
+- queue reporting for additional requests
+- process-level request body protection
 - health/status reporting
 
 ## Shared Utility Model Principle
@@ -144,7 +142,8 @@ This is acceptable because:
 - caller services own semantics
 - the first version is a low-scale local network system
 
-Live user-path calls must have priority over background jobs.
+Live user-path calls must be able to move ahead of background jobs through model-host numeric
+priority. Omitted priority is the lowest model-host priority.
 
 ## Multimodal Role
 
