@@ -42,6 +42,21 @@ competing places for the same parameter.
 The goal is operational clarity: changing a model, port, upstream URL, or equivalent runtime setting
 must require one edit in one predictable place.
 
+## Local Port Conventions
+
+When multiple Swirlock services run on the same local machine, committed runtime config files must
+avoid port collisions. The port value in each service's root config file remains that service's
+source of truth, but local implementations should follow a documented convention so process-manager
+startup is predictable.
+
+Current local convention:
+
+- Model Host implementation: `3000`
+- RAG Engine implementation: `3001`
+
+If a machine runs separate Primary LLM Host and Utility LLM Host processes, they must use distinct
+ports even when both processes are built from the same Model Host implementation.
+
 ## Local Node/Nest Process Management
 
 Local Node/Nest services that are intended to keep running on LAN machines should run under PM2,
