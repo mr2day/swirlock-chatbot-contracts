@@ -75,6 +75,38 @@ The RAG Engine's PostgreSQL store is for web-derived retrieval knowledge: source
 lexical indexes, future embeddings, retrieval run metadata, provenance, and refresh state. It is not
 chatbot memory and must not be collapsed with Context Fragmenter storage.
 
+## CPU-Only Co-Located Neural Services
+
+The Hard Hardware Rule allows a second neural model on a machine that already hosts an
+accelerator-bound model only when the second model runs strictly on CPU. The current
+canonical example is co-locating the Embedding Service on the Utility Computer alongside
+the Utility LLM Host's GPU-resident model.
+
+Implementations of CPU-only co-located neural services must satisfy all of the following:
+
+- The inference runtime must be built without accelerator support, not merely configured to
+  avoid it. For llama.cpp this means a CPU-only build (no `GGML_CUDA`, `GGML_HIPBLAS`,
+  `GGML_VULKAN`, `GGML_METAL`, or other accelerator backend compiled in). Runtime flags
+  alone are not a sufficient guarantee.
+- The runtime must not allocate VRAM under any code path. If the runtime cannot guarantee
+  this at compile time, the service must not be deployed on a machine that hosts an
+  accelerator-bound model.
+- The runtime's CPU thread count must be bounded by configuration, leaving enough headroom
+  for the accelerator-bound service's CPU-side work such as tokenization, sampling, and
+  runtime IO. The exact thread cap is a per-machine deployment decision and must be
+  represented in the service's single source of truth runtime config.
+- The service must fail fast at startup if it detects a usable accelerator device that its
+  build is supposed to be unable to use, since that detection means the build assumption is
+  wrong for the deployed machine.
+- Background and indexing workloads must use omitted or low numeric `requestContext.priority`
+  so live user-path work moves ahead in the service's queue. This protects perceived latency
+  even when CPU contention occurs.
+
+These requirements apply only to neural services co-located with an accelerator-bound
+service. A service deployed alone on its own machine, such as the Embedding Service on a
+dedicated Raspberry Pi 5, is not bound by the CPU-only rule and may use whatever local
+hardware it owns.
+
 ## Local Node/Nest Process Management
 
 Local Node/Nest services that are intended to keep running on LAN machines should run under PM2,

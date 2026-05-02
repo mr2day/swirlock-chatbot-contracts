@@ -34,13 +34,24 @@ This separation keeps responsibilities inspectable, replaceable, and commerciall
 
 ## Hard Hardware Rule
 
-One machine must run no more than one neural model.
+One machine must run no more than one neural model on any single hardware accelerator
+(GPU, NPU, or equivalent).
 
 Implications:
 
-- no machine should host multiple LLMs
-- no machine should host both an LLM and an embedding model
-- if multiple apps need the same model, they call the local model host on that machine
+- no GPU should host more than one neural model at a time
+- no GPU should host both an LLM and an embedding model
+- if multiple apps need the same accelerator-bound model, they call the local model host on that machine
+
+A second neural model may be co-located on the same machine if and only if it runs strictly
+on CPU and its runtime cannot touch the accelerator. The CPU-only model must not be able to
+allocate VRAM, evict accelerator-resident weights, or contend with the accelerator under any
+code path. This relaxation exists so a lightweight model such as the Embedding Service can
+share a machine with an accelerator-bound LLM Host without taking a second physical machine.
+
+The CPU-co-located service must also leave enough CPU headroom for the accelerator-bound
+service's own CPU-side work, such as tokenization, sampling, and runtime IO. The exact
+discipline for that is defined in `INTERNAL_INFRASTRUCTURE.md`.
 
 ## Physical Topology
 
@@ -61,25 +72,30 @@ This machine should not own retrieval, memory, or orchestration logic.
 
 Role:
 
-- host the Utility LLM Host
+- host the Utility LLM Host on its accelerator
 - expose the same generic model-host capability profile as the Primary LLM Host
 - support RAG Engine, Context Fragmenter, and other internal apps
+- optionally co-host the Embedding Service as a CPU-only neural model service, subject to the Hard Hardware Rule
 
 Current intended model:
 
 - Gemma 4 (`gemma4:e4b`) on Ollama, with text and image input enabled
 
-This machine may host multiple non-neural apps, but only one neural model service.
+This machine may host multiple non-neural apps and exactly one accelerator-bound neural
+model service. A CPU-only neural model service such as the Embedding Service may also be
+co-located here when its runtime is built and configured to never touch the accelerator and
+its CPU usage stays bounded enough to leave headroom for the Utility LLM's CPU-side work.
 
-### Raspberry Pi 5
+### Embedding Service Host
 
-Role:
+The Embedding Service is hosted by whichever machine in the local network is configured to
+run it under the CPU-only co-location rules above. In the current local deployment, that
+machine is the Utility Computer. The Embedding Service is not pinned to any specific
+hardware class as long as the Hard Hardware Rule is satisfied.
 
-- host the Embedding Service
-
-Current intended model:
-
-- Gemma Embedding or equivalent embedding-only model
+A dedicated low-power node such as a Raspberry Pi 5 remains an acceptable alternative
+deployment when a future deployment prefers a separate physical box for vectorization. The
+contract surface is identical in either case.
 
 ## Logical Services
 
