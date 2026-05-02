@@ -57,6 +57,23 @@ Current local convention:
 If a machine runs separate Primary LLM Host and Utility LLM Host processes, they must use distinct
 ports even when both processes are built from the same Model Host implementation.
 
+## Local Persistent Stores
+
+Domain services may own internal durable stores when the stored data belongs to that service's
+responsibility boundary. These stores are implementation details unless a service contract explicitly
+exposes them.
+
+Current local RAG Engine convention:
+
+- PostgreSQL 17 database: `swirlock_rag`
+- PostgreSQL role: `swirlock_rag`
+- PostgreSQL extensions: `vector`, `pg_trgm`, `unaccent`, and `citext`
+- Dedicated local SSD tablespace directory: `D:\swirlock\postgresql\tablespaces\rag_knowledge`
+
+The RAG Engine's PostgreSQL store is for web-derived retrieval knowledge: source documents, chunks,
+lexical indexes, future embeddings, retrieval run metadata, provenance, and refresh state. It is not
+chatbot memory and must not be collapsed with Context Fragmenter storage.
+
 ## Local Node/Nest Process Management
 
 Local Node/Nest services that are intended to keep running on LAN machines should run under PM2,

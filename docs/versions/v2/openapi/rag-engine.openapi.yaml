@@ -292,3 +292,21 @@ components:
                 durationMs:
                   type: integer
                   minimum: 0
+                localResultCount:
+                  type: integer
+                  minimum: 0
+                liveResultCount:
+                  type: integer
+                  minimum: 0
+                liveSearchError:
+                  type: string
+                warnings:
+                  type: array
+                  items:
+                    type: string
+                knowledgeStorePath:
+                  type: string
+                  description: Redacted local storage location for diagnostics only.
+                knowledgeStoreKind:
+                  type: string
+                  enum: [postgresql, json_file]
