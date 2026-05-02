@@ -1,0 +1,423 @@
+openapi: 3.1.0
+info:
+  title: Swirlock Embedding Service API
+  version: 2.0.0-draft
+  summary: Agnostic embedding-service contract for the Swirlock Embedding Service.
+  description: >
+    The Embedding Service exposes one local embedding model for vectorization and
+    operational health. It owns model loading, keep-alive, queueing, lifecycle
+    behavior, and health/status reporting. It does not own retrieval policy,
+    memory policy, similarity search, or any caller task semantics.
+
+    This contract follows the same agnostic-appliance pattern as the Model Host
+    API. The Embedding Service produces vectors, never text. It does not store
+    inputs or outputs. Callers are responsible for persistence and similarity
+    search; the service only transforms text into embedding vectors.
+paths:
+  /v2/embeddings:
+    post:
+      operationId: createEmbeddings
+      summary: Generate embedding vectors for a batch of text inputs
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmbedRequest'
+      responses:
+        '200':
+          description: Embeddings generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmbedResponse'
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v2/health:
+    get:
+      operationId: getHealth
+      summary: Return process liveness and readiness
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationId'
+      responses:
+        '200':
+          description: Health returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v2/model/status:
+    get:
+      operationId: getModelStatus
+      summary: Return hosted embedding model status, capabilities, and capacity
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationId'
+      responses:
+        '200':
+          description: Model status returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelStatusResponse'
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v2/model/preload:
+    post:
+      operationId: preloadModel
+      summary: Ask the host to load or refresh keep-alive for the configured embedding model
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelLifecycleRequest'
+      responses:
+        '202':
+          description: Preload request accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelLifecycleResponse'
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v2/model/unload:
+    post:
+      operationId: unloadModel
+      summary: Ask the host to unload the configured embedding model when supported
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelLifecycleRequest'
+      responses:
+        '202':
+          description: Unload request accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelLifecycleResponse'
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+components:
+  parameters:
+    XCorrelationId:
+      name: x-correlation-id
+      in: header
+      required: true
+      schema:
+        type: string
+  schemas:
+    ApiMeta:
+      type: object
+      required: [requestId, correlationId, apiVersion, servedAt]
+      properties:
+        requestId:
+          type: string
+          format: uuid
+        correlationId:
+          type: string
+        apiVersion:
+          type: string
+          const: v2
+        servedAt:
+          type: string
+          format: date-time
+    ErrorBody:
+      type: object
+      required: [code, message, retryable]
+      properties:
+        code:
+          type: string
+          enum:
+            - bad_request
+            - validation_failed
+            - upstream_unavailable
+            - model_unavailable
+            - limit_exceeded
+            - internal_error
+        message:
+          type: string
+        retryable:
+          type: boolean
+        details:
+          type: object
+          additionalProperties: true
+    ErrorEnvelope:
+      type: object
+      required: [meta, error]
+      properties:
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        error:
+          $ref: '#/components/schemas/ErrorBody'
+    RequestContext:
+      type: object
+      required: [callerService, requestedAt]
+      properties:
+        callerService:
+          type: string
+          description: Logical caller name.
+        priority:
+          type: number
+          description: >
+            Optional embedding-service queue priority. Higher finite numbers run
+            first. If omitted, the request is lower priority than every request
+            that provides a finite priority number. Equal priorities run in
+            arrival order. Live user-path retrieval should use a higher numeric
+            priority than indexing or background work.
+        requestedAt:
+          type: string
+          format: date-time
+        debug:
+          type: boolean
+    EmbeddingInput:
+      type: object
+      required: [texts]
+      properties:
+        texts:
+          type: array
+          minItems: 1
+          description: >
+            Batch of text inputs to embed. The response returns one vector per
+            input in the same order.
+          items:
+            type: string
+            minLength: 1
+    EmbeddingOptions:
+      type: object
+      properties:
+        normalize:
+          type: boolean
+          description: >
+            Request L2-normalized output vectors. The host may always normalize
+            regardless of this hint when the configured model emits normalized
+            vectors by default; the actual behavior is reported in
+            `data.normalized` and `data.appliedOptions`.
+        inputType:
+          type: string
+          enum: [query, document]
+          default: document
+          description: >
+            Hint for embedding models that use different prefixes or
+            instructions for retrieval queries vs. indexed documents (for
+            example BGE, E5, EmbeddingGemma). Hosts that ignore this hint must
+            still report the value applied in `data.inputType` and
+            `data.appliedOptions`.
+        ollama:
+          type: object
+          additionalProperties: true
+          description: >
+            Ollama runtime options passed through by the embedding host when the
+            host uses Ollama. Callers own task-level policy for these options.
+    EmbedRequest:
+      type: object
+      required: [requestContext, input]
+      properties:
+        requestContext:
+          $ref: '#/components/schemas/RequestContext'
+        input:
+          $ref: '#/components/schemas/EmbeddingInput'
+        options:
+          $ref: '#/components/schemas/EmbeddingOptions'
+    EmbedResponse:
+      type: object
+      required: [meta, data]
+      properties:
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          type: object
+          required:
+            - modelId
+            - dimensions
+            - normalized
+            - inputType
+            - embeddings
+            - generatedAt
+          properties:
+            modelId:
+              type: string
+            dimensions:
+              type: integer
+              minimum: 1
+              description: Length of every returned vector.
+            normalized:
+              type: boolean
+              description: >
+                True when the returned vectors are L2-normalized. Callers use
+                this to choose between dot product and cosine similarity at
+                query time.
+            inputType:
+              type: string
+              enum: [query, document]
+              description: The input type the host actually applied.
+            embeddings:
+              type: array
+              description: >
+                One embedding vector per input text, in the same order as
+                `input.texts`.
+              items:
+                type: array
+                items:
+                  type: number
+            generatedAt:
+              type: string
+              format: date-time
+            appliedOptions:
+              $ref: '#/components/schemas/EmbeddingOptions'
+    EmbeddingCapabilities:
+      type: object
+      required: [textInput, vectorOutput, dimensions]
+      properties:
+        textInput:
+          type: boolean
+        imageInput:
+          type: boolean
+          description: >
+            True when the configured model is a multimodal embedder that
+            accepts image input alongside text. Image embedding payloads are
+            not defined by this v2 draft and would be added as additive fields
+            on `EmbeddingInput`.
+        vectorOutput:
+          type: boolean
+          const: true
+        dimensions:
+          type: integer
+          minimum: 1
+          description: Length of vectors produced by the configured model.
+        maxInputTokens:
+          type: integer
+          minimum: 1
+          description: >
+            Per-text input token budget enforced by the host to protect model
+            and machine health. Reported when the runtime exposes a known cap.
+        maxBatchSize:
+          type: integer
+          minimum: 1
+          description: >
+            Maximum number of texts accepted per request, enforced by the host
+            to protect machine memory. Reported when the host enforces a cap.
+        normalizesByDefault:
+          type: boolean
+          description: >
+            True when the configured model always emits L2-normalized vectors
+            regardless of `EmbeddingOptions.normalize`.
+    EmbeddingCapacity:
+      type: object
+      required: [activeRequests, modelSlots, queueDepth]
+      properties:
+        activeRequests:
+          type: integer
+          minimum: 0
+        modelSlots:
+          type: integer
+          minimum: 1
+        queueDepth:
+          type: integer
+          minimum: 0
+        averageRequestDurationMs:
+          type: integer
+          minimum: 0
+    HealthResponse:
+      type: object
+      required: [meta, data]
+      properties:
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          type: object
+          required: [status, ready]
+          properties:
+            status:
+              type: string
+              enum: [ok, degraded, unavailable]
+            ready:
+              type: boolean
+    ModelStatusResponse:
+      type: object
+      required: [meta, data]
+      properties:
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          type: object
+          required:
+            - modelId
+            - availableModels
+            - ready
+            - loaded
+            - keepAlive
+            - capabilities
+            - capacity
+          properties:
+            modelId:
+              type: string
+            availableModels:
+              type: array
+              items:
+                type: string
+            ready:
+              type: boolean
+            loaded:
+              type: boolean
+            keepAlive:
+              type: string
+            capabilities:
+              $ref: '#/components/schemas/EmbeddingCapabilities'
+            capacity:
+              $ref: '#/components/schemas/EmbeddingCapacity'
+            runtime:
+              type: object
+              additionalProperties: true
+    ModelLifecycleRequest:
+      type: object
+      required: [requestContext]
+      properties:
+        requestContext:
+          $ref: '#/components/schemas/RequestContext'
+    ModelLifecycleResponse:
+      type: object
+      required: [meta, data]
+      properties:
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          type: object
+          required: [accepted, modelId]
+          properties:
+            accepted:
+              type: boolean
+            modelId:
+              type: string
+            status:
+              type: string
+              enum: [loading, loaded, unloading, unloaded, unsupported]

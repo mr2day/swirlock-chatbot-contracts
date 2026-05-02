@@ -53,6 +53,7 @@ Current local convention:
 
 - Model Host implementation: `3000`
 - RAG Engine implementation: `3001`
+- Embedding Service implementation: `3002`
 
 If a machine runs separate Primary LLM Host and Utility LLM Host processes, they must use distinct
 ports even when both processes are built from the same Model Host implementation.

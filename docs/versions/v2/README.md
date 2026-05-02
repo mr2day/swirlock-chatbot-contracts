@@ -27,5 +27,10 @@ image-derived retrieval support, and background cognition.
 - `openapi/context-fragmenter.openapi.yaml`
 - `openapi/rag-engine.openapi.yaml`
 - `openapi/model-host.openapi.yaml`
+- `openapi/embedding-service.openapi.yaml`
 
 The v1 `main-llm-server` contract is replaced in v2 by the generic `model-host` contract.
+
+The Embedding Service contract follows the same agnostic-appliance pattern as the
+Model Host API. It exposes vectorization, model health, and lifecycle controls. It
+does not own retrieval, similarity search, persistence, or any caller task semantics.
