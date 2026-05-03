@@ -13,8 +13,10 @@ Client
   |
   v
 Chat Orchestrator
-  |------> Context Fragmenter --------\
+  |------> Context Fragmenter --------+----> Utility LLM Host
+  |                                   \----> Embedding Service
   |------> RAG Engine ----------------+----> Utility LLM Host
+  |                                   \----> Embedding Service
   |------> Primary LLM Host
   |------> Utility LLM Host (support/fallback only)
   |
@@ -27,7 +29,7 @@ Scheduler/Admin
 Context Fragmenter
 ```
 
-Model host calls do not change ownership of RAG, memory, or chat semantics. They are infrastructure calls.
+Model host calls and Embedding Service calls do not change ownership of RAG, memory, or chat semantics. They are infrastructure calls.
 
 ## Core Services
 
@@ -129,6 +131,25 @@ Any internal app may call this host when it needs the utility model, subject to 
 
 The Utility LLM Host is not the only vision-capable service. It is support capacity for internal cognition, not the owner of image semantics.
 
+### Embedding Service
+
+Owns:
+
+- embedding model availability
+- vectorization for the configured embedding model's advertised input capabilities
+- model health and lifecycle protection
+- model health/status
+
+Does not own:
+
+- retrieval semantics
+- memory semantics
+- similarity search
+- vector persistence
+- task interpretation
+
+The Embedding Service is infrastructure, not a domain service. RAG Engine and Context Fragmenter may call it directly when they need vectors. The Embedding Service does not know whether the caller is indexing web content, embedding a live retrieval query, or vectorizing a memory fragment. Callers own persistence, similarity scoring, and any task-level interpretation of the returned vectors.
+
 ## Allowed Direct Calls
 
 Allowed:
@@ -139,9 +160,11 @@ Allowed:
 - `Chat Orchestrator -> Primary LLM Host`
 - `Chat Orchestrator -> Utility LLM Host` for support cognition or explicitly allowed degraded final-answer fallback
 - `RAG Engine -> Utility LLM Host`
+- `RAG Engine -> Embedding Service`
 - `Context Fragmenter -> Utility LLM Host`
+- `Context Fragmenter -> Embedding Service`
 - `Scheduler/Admin -> Context Fragmenter`
-- internal service calls to model hosts, when the caller owns the task semantics
+- internal service calls to model hosts and the Embedding Service, when the caller owns the task semantics
 
 ## Forbidden Direct Calls
 
@@ -151,11 +174,18 @@ Forbidden unless the architecture is intentionally revised:
 - `Context Fragmenter -> RAG Engine`
 - `Primary LLM Host -> RAG Engine`
 - `Primary LLM Host -> Context Fragmenter`
+- `Primary LLM Host -> Embedding Service`
 - `Utility LLM Host -> RAG Engine`
 - `Utility LLM Host -> Context Fragmenter`
+- `Utility LLM Host -> Embedding Service`
+- `Embedding Service -> RAG Engine`
+- `Embedding Service -> Context Fragmenter`
+- `Embedding Service -> Utility LLM Host`
+- `Embedding Service -> Primary LLM Host`
 - `Client -> Context Fragmenter`
 - `Client -> RAG Engine`
 - `Client -> model hosts`
+- `Client -> Embedding Service`
 
 ## Canonical User Message Route
 
