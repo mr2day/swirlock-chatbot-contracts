@@ -51,7 +51,8 @@ startup is predictable.
 
 Current local convention:
 
-- Model Host implementation: `3000`
+- Model Host implementation: `3213`
+- Chat Orchestrator implementation: `3200`
 - RAG Engine implementation: `3001`
 - Embedding Service implementation: `3002`
 
