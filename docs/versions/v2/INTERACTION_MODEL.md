@@ -211,6 +211,27 @@ This route defines how a user message moves through the system. Agents developin
 - Degraded final-answer fallback to Utility LLM Host is allowed only when the Orchestrator explicitly supports that mode and exposes it in diagnostics or operational logs.
 - Live user-path calls should provide higher numeric model-host priority than background memory or sleep jobs.
 
+## Streaming Variants
+
+A service may expose a WebSocket sibling for an otherwise blocking operation when callers need to
+render intermediate output, such as model thinking text, response token chunks, or queue position
+updates. The streaming endpoint sits beside the blocking one and uses an event shape modeled on
+the Model Host stream events: `accepted`, `queued`, `started`, `thinking`, `chunk`, `done`,
+`error`.
+
+The Chat Orchestrator's streaming variant of `submitChatTurn` preserves the same ownership
+boundaries as the blocking turn submission: the Chat Orchestrator still owns session lifecycle,
+turn persistence, retrieval orchestration, memory recording, and final response shape. Streaming
+is a transport variation, not a different service responsibility. The orchestrator's terminal
+`done` event therefore carries the persisted identifiers (`turnId`,
+`assistantMessage.messageId`, `createdAt`) in addition to `finishReason`, because the orchestrator
+is what writes them.
+
+Bearer authentication on the WebSocket upgrade follows
+`API_CONVENTIONS.md#websocket-authentication`. Authorization failures discovered after a
+successful upgrade, such as a session that exists but belongs to another user, are reported as
+the service-defined `error` event before the server closes the connection.
+
 ## Background Lifecycle
 
 Context Fragmenter may call Utility LLM Host during background memory processing or sleep. Those

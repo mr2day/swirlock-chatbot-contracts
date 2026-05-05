@@ -151,3 +151,29 @@ Caller services own task semantics and caller-side policy.
 ## Authentication
 
 Authentication details are not fixed by this draft. Payloads and headers should be designed so bearer auth, mTLS, or another private-network mechanism can be added without changing semantic payloads.
+
+## WebSocket Authentication
+
+When a service exposes a WebSocket endpoint, bearer-token auth must be acceptable on the upgrade
+request through any of the following transports:
+
+1. `Authorization: Bearer <token>` request header. Preferred for any non-browser caller.
+2. `?token=<token>` query parameter. Required for browsers, since the standard `WebSocket`
+   constructor cannot set custom headers.
+3. `Sec-WebSocket-Protocol: bearer, <token>` subprotocol. Browser-friendly alternative via
+   `new WebSocket(url, ['bearer', '<token>'])`. The server should echo `bearer` back as the
+   negotiated subprotocol when it accepts the upgrade.
+
+A service may accept any subset of these transports. If it accepts only a subset, its OpenAPI
+description must say which ones. The first WebSocket message after upgrade must not carry the
+bearer token; the token belongs on the upgrade handshake, not in the application protocol.
+
+Tokens passed in `?token=` will appear in HTTP server logs and access logs. Deployments that
+consider that unacceptable should disable the query transport and require the header or
+subprotocol form.
+
+A failed token check should respond `401` to the upgrade request and close the TCP connection
+without completing the WebSocket handshake. Authorization failures discovered after a successful
+upgrade, such as an authenticated user who does not own the resource referenced in the URL,
+should be reported as a service-defined `error` event on the open WebSocket before the server
+closes the connection.
