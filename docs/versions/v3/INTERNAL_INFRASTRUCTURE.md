@@ -73,8 +73,8 @@ Current local RAG Engine convention:
 - Dedicated local SSD tablespace directory: `D:\swirlock\postgresql\tablespaces\rag_knowledge`
 
 The RAG Engine's PostgreSQL store is for web-derived retrieval knowledge: source documents, chunks,
-lexical indexes, future embeddings, retrieval run metadata, provenance, and refresh state. It is not
-chatbot memory and must not be collapsed with Context Fragmenter storage.
+lexical indexes, embeddings, embedding jobs, retrieval run metadata, provenance, and refresh state.
+It is not chatbot memory and must not be collapsed with Context Fragmenter storage.
 
 ## CPU-Only Co-Located Neural Services
 

@@ -29,6 +29,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /v2/health:
+    get:
+      operationId: getHealth
+      summary: Return RAG Engine liveness, readiness, and local dependency diagnostics
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationId'
+      responses:
+        '200':
+          description: Health returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 components:
   parameters:
     XCorrelationId:
@@ -304,9 +323,164 @@ components:
                   type: array
                   items:
                     type: string
+                utilityLlm:
+                  type: object
+                  description: Optional degraded-mode diagnostics for Utility LLM Host support calls.
+                  properties:
+                    enabled:
+                      type: boolean
+                    configuredUrl:
+                      type: string
+                    usedForQuery:
+                      type: boolean
+                    usedForImages:
+                      type: boolean
+                    usedForExtractionSummaries:
+                      type: boolean
+                    usedForEvidenceSynthesis:
+                      type: boolean
+                    calls:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          task:
+                            type: string
+                          attempted:
+                            type: boolean
+                          succeeded:
+                            type: boolean
+                          durationMs:
+                            type: integer
+                            minimum: 0
+                          attempts:
+                            type: integer
+                            minimum: 0
+                          error:
+                            type: string
+                embeddingService:
+                  type: object
+                  description: Optional degraded-mode diagnostics for Embedding Service calls.
+                  properties:
+                    enabled:
+                      type: boolean
+                    configuredUrl:
+                      type: string
+                    modelId:
+                      type: string
+                    dimensions:
+                      type: integer
+                      minimum: 1
+                    usedForQuery:
+                      type: boolean
+                    calls:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          attempted:
+                            type: boolean
+                          succeeded:
+                            type: boolean
+                          durationMs:
+                            type: integer
+                            minimum: 0
+                          attempts:
+                            type: integer
+                            minimum: 0
+                          inputCount:
+                            type: integer
+                            minimum: 0
+                          inputType:
+                            type: string
+                            enum: [query, document]
+                          error:
+                            type: string
                 knowledgeStorePath:
                   type: string
                   description: Redacted local storage location for diagnostics only.
                 knowledgeStoreKind:
                   type: string
                   enum: [postgresql, json_file]
+    HealthResponse:
+      type: object
+      required: [meta, data]
+      properties:
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          type: object
+          required:
+            - status
+            - ready
+            - service
+            - apiVersion
+            - knowledgeStore
+            - providers
+          properties:
+            status:
+              type: string
+              enum: [ok, degraded, unavailable]
+            ready:
+              type: boolean
+            service:
+              type: string
+              const: swirlock-rag-engine
+            apiVersion:
+              type: string
+              const: v2
+            knowledgeStore:
+              type: object
+              properties:
+                kind:
+                  type: string
+                  enum: [postgresql, json_file]
+                location:
+                  type: string
+                ready:
+                  type: boolean
+                documentCount:
+                  type: integer
+                  minimum: 0
+                schemaVersion:
+                  type: integer
+                  minimum: 1
+                error:
+                  type: string
+            embeddingJobs:
+              type: object
+              properties:
+                configuredModel:
+                  type: string
+                configuredDimensions:
+                  type: integer
+                  minimum: 1
+                pending:
+                  type: integer
+                  minimum: 0
+                inProgress:
+                  type: integer
+                  minimum: 0
+                done:
+                  type: integer
+                  minimum: 0
+                failed:
+                  type: integer
+                  minimum: 0
+                embeddedChunks:
+                  type: integer
+                  minimum: 0
+                chunksAwaitingEmbedding:
+                  type: integer
+                  minimum: 0
+            providers:
+              type: object
+              properties:
+                exaConfigured:
+                  type: boolean
+                utilityLlm:
+                  type: object
+                  additionalProperties: true
+                embeddingService:
+                  type: object
+                  additionalProperties: true

@@ -35,14 +35,35 @@ final user-facing answer.
 
 ## Roadmap
 
-The detailed roadmap has not yet been drafted in this contract version.
-The PostgreSQL store conventions are pinned in
-`INTERNAL_INFRASTRUCTURE.md#local-persistent-stores`.
+The implementation roadmap is tracked in the RAG repository at
+`docs/RAG_ENGINE_ROADMAP.md`. As of the current phase-one branch, the
+Utility LLM Host client, PostgreSQL store, ingestion/indexing baseline,
+Embedding Service client, embedding worker, and baseline hybrid retrieval
+are implemented. Remaining larger work includes shared media resolution
+for `imageId`, stronger reranking, provider cost tracking, contract-driven
+validation, broader e2e coverage, and larger retrieval evaluations.
 
 ## Current Implementation
 
-Implementation status not surveyed for this v3 draft. The contract surface
-is defined in `openapi/rag-engine.openapi.yaml` and the local durable-store
-conventions are pinned in
-`INTERNAL_INFRASTRUCTURE.md#local-persistent-stores`. This section will be
-filled in when the service is audited against running code.
+Current local implementation status:
+
+- Exposes `POST /v2/retrieval/evidence` and `GET /v2/health`.
+- Calls the Utility LLM Host over the v2 WebSocket inference stream for
+  query support, image observations from `imageUrl`, extraction summaries,
+  and evidence shaping.
+- Calls the Embedding Service over HTTP on `127.0.0.1:3002` for query and
+  document embeddings. Live user-path query embeddings use a higher queue
+  priority than background indexing.
+- Stores web-derived retrieval knowledge in PostgreSQL database
+  `swirlock_rag`, with JSON file fallback only for no-database development
+  and tests.
+- Queues changed chunks in `rag_embedding_jobs`; a local worker drains the
+  queue through the Embedding Service and writes 384-dimensional
+  `pgvector` embeddings for model `bge-small-en-v1.5`.
+- Local retrieval uses a baseline hybrid strategy that combines
+  PostgreSQL full-text/trigram ranking, vector similarity, freshness,
+  source quality, and source diversity.
+- Retrieval degrades instead of failing when Utility LLM or Embedding
+  Service support is unavailable; diagnostics are returned under
+  `retrievalDiagnostics.utilityLlm` and
+  `retrievalDiagnostics.embeddingService`.
