@@ -6,6 +6,7 @@ This repository keeps immutable version snapshots under `docs/versions/`.
 
 - `v1`: original draft contracts. Preserved unchanged for compatibility and reference.
 - `v2`: revised draft contracts that introduce agnostic model hosts and stricter infrastructure boundaries.
+- `v3`: structural reorganization of `v2`. Same architectural stance and semantic surface. Adds per-app contract docs under `docs/versions/v3/apps/`, each combining a Final Form, a Roadmap, and a Current Implementation section. URL versioning of cross-service APIs stays at `/v2/...` because the API itself has not changed.
 
 ## Compatibility Rules
 

@@ -1,0 +1,542 @@
+openapi: 3.1.0
+info:
+  title: Swirlock Chat Orchestrator API
+  version: 2.0.0-draft
+  summary: Client-facing orchestration contract for the Swirlock chatbot.
+paths:
+  /v2/chat/sessions:
+    post:
+      operationId: createChatSession
+      summary: Create a new chat session
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationId'
+        - $ref: '#/components/parameters/XIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+      responses:
+        '201':
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateSessionResponse'
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v2/chat/sessions/{sessionId}/turns:
+    post:
+      operationId: submitChatTurn
+      summary: Submit one user turn and receive one assistant turn
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+        - $ref: '#/components/parameters/XCorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitTurnRequest'
+      responses:
+        '200':
+          description: Assistant turn generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmitTurnResponse'
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v2/chat/sessions/{sessionId}/turns/stream:
+    get:
+      operationId: streamChatTurn
+      summary: Open a WebSocket stream for one user turn
+      description: |
+        Upgrade this route to a WebSocket connection. After the connection
+        opens, the client sends exactly one `SubmitTurnStreamMessage`. The
+        orchestrator responds with zero or more JSON `ChatStreamEvent`
+        messages and closes the connection after `done` or `error`.
+
+        The orchestrator buffers `chunk` text on its side and atomically
+        persists the user and assistant messages once the upstream Model
+        Host emits its terminal `done` event. The orchestrator's `done`
+        event therefore carries the persisted `turnId`,
+        `assistantMessage.messageId`, and `createdAt`, in addition to
+        `finishReason`.
+
+        Authentication on the upgrade request uses one of the bearer
+        transports listed in `API_CONVENTIONS.md#websocket-authentication`.
+        A failed token check responds `401` to the upgrade and closes the
+        TCP connection without completing the handshake. A non-existent or
+        unauthorized session responds with a `ChatStreamErrorEvent`
+        (`error.code = "not_found"` or `"forbidden"`) and closes the
+        WebSocket.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+        - $ref: '#/components/parameters/XCorrelationId'
+      responses:
+        '101':
+          description: WebSocket connection accepted
+        default:
+          description: WebSocket handshake error
+components:
+  parameters:
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    XCorrelationId:
+      name: x-correlation-id
+      in: header
+      required: true
+      schema:
+        type: string
+    XIdempotencyKey:
+      name: x-idempotency-key
+      in: header
+      required: false
+      schema:
+        type: string
+  schemas:
+    ApiMeta:
+      type: object
+      required:
+        - requestId
+        - correlationId
+        - apiVersion
+        - servedAt
+      properties:
+        requestId:
+          type: string
+          format: uuid
+        correlationId:
+          type: string
+        apiVersion:
+          type: string
+          example: v2
+        servedAt:
+          type: string
+          format: date-time
+    ErrorBody:
+      type: object
+      required:
+        - code
+        - message
+        - retryable
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        retryable:
+          type: boolean
+        details:
+          type: object
+          additionalProperties: true
+    ErrorEnvelope:
+      type: object
+      required:
+        - meta
+        - error
+      properties:
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        error:
+          $ref: '#/components/schemas/ErrorBody'
+    RequestContext:
+      type: object
+      required:
+        - callerService
+        - priority
+        - requestedAt
+      properties:
+        callerService:
+          type: string
+          example: chat-client
+        priority:
+          type: string
+          enum: [interactive, background, maintenance]
+        requestedAt:
+          type: string
+          format: date-time
+        timeoutMs:
+          type: integer
+          minimum: 1
+        debug:
+          type: boolean
+    TextInputPart:
+      type: object
+      required:
+        - type
+        - text
+      properties:
+        type:
+          type: string
+          const: text
+        text:
+          type: string
+    ImageInputPart:
+      type: object
+      required:
+        - type
+      oneOf:
+        - required: [imageId]
+        - required: [imageUrl]
+      properties:
+        type:
+          type: string
+          const: image
+        imageId:
+          type: string
+        imageUrl:
+          type: string
+          format: uri
+        mimeType:
+          type: string
+    InputPart:
+      oneOf:
+        - $ref: '#/components/schemas/TextInputPart'
+        - $ref: '#/components/schemas/ImageInputPart'
+    CreateSessionRequest:
+      type: object
+      required:
+        - requestContext
+        - participant
+        - app
+      properties:
+        requestContext:
+          $ref: '#/components/schemas/RequestContext'
+        participant:
+          type: object
+          required:
+            - userId
+          properties:
+            userId:
+              type: string
+            displayName:
+              type: string
+        app:
+          type: object
+          required:
+            - appId
+          properties:
+            appId:
+              type: string
+            personaId:
+              type: string
+        client:
+          type: object
+          properties:
+            channel:
+              type: string
+            clientVersion:
+              type: string
+    CreateSessionResponse:
+      type: object
+      required:
+        - meta
+        - data
+      properties:
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          type: object
+          required:
+            - sessionId
+            - createdAt
+            - status
+          properties:
+            sessionId:
+              type: string
+              format: uuid
+            createdAt:
+              type: string
+              format: date-time
+            status:
+              type: string
+              enum: [active]
+    SubmitTurnRequest:
+      type: object
+      required:
+        - requestContext
+        - message
+      properties:
+        requestContext:
+          $ref: '#/components/schemas/RequestContext'
+        clientTurnId:
+          type: string
+        message:
+          type: object
+          required:
+            - parts
+            - occurredAt
+          properties:
+            parts:
+              type: array
+              minItems: 1
+              items:
+                $ref: '#/components/schemas/InputPart'
+            occurredAt:
+              type: string
+              format: date-time
+        options:
+          type: object
+          properties:
+            responseMode:
+              type: string
+              enum: [blocking]
+              default: blocking
+            maxOutputTokens:
+              type: integer
+              minimum: 1
+            includeDiagnostics:
+              type: boolean
+              default: false
+            thinking:
+              type: boolean
+              description: |
+                Request upstream `thinking` events from the Model Host when
+                the orchestrator is invoked through the streaming endpoint.
+                Ignored on the blocking endpoint. Defaults to `true` on the
+                streaming endpoint when omitted.
+    CitationRef:
+      type: object
+      required:
+        - evidenceId
+        - sourceTitle
+      properties:
+        evidenceId:
+          type: string
+          format: uuid
+        sourceTitle:
+          type: string
+        sourceUrl:
+          type: string
+          format: uri
+    SubmitTurnResponse:
+      type: object
+      required:
+        - meta
+        - data
+      properties:
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          type: object
+          required:
+            - sessionId
+            - turnId
+            - assistantMessage
+          properties:
+            sessionId:
+              type: string
+              format: uuid
+            turnId:
+              type: string
+              format: uuid
+            assistantMessage:
+              type: object
+              required:
+                - messageId
+                - content
+                - createdAt
+              properties:
+                messageId:
+                  type: string
+                  format: uuid
+                content:
+                  type: string
+                createdAt:
+                  type: string
+                  format: date-time
+            citations:
+              type: array
+              items:
+                $ref: '#/components/schemas/CitationRef'
+            diagnostics:
+              type: object
+              properties:
+                retrievalUsed:
+                  type: boolean
+                memoryFragmentCount:
+                  type: integer
+                  minimum: 0
+                retrievalMode:
+                  type: string
+                  enum: [none, local_rag, live_web, local_and_live]
+    SubmitTurnStreamMessage:
+      type: object
+      required: [type, correlationId, request]
+      description: |
+        First and only client-to-server message on the streaming WebSocket.
+        After the orchestrator receives this envelope and validates the
+        embedded `request`, it begins emitting `ChatStreamEvent` messages
+        until the stream ends with `done` or `error`.
+      properties:
+        type:
+          type: string
+          const: submit_turn
+        correlationId:
+          type: string
+        request:
+          $ref: '#/components/schemas/SubmitTurnRequest'
+    QueueWaitInfo:
+      type: object
+      required: [position, requestsAhead, queueDepth, defaultPriority]
+      description: |
+        Mirrors the Model Host's `QueueWaitInfo` shape so callers can render
+        identical queue UX whether they are talking to a Model Host directly
+        or to the orchestrator's streaming endpoint.
+      properties:
+        position:
+          type: integer
+          minimum: 1
+        requestsAhead:
+          type: integer
+          minimum: 0
+        queueDepth:
+          type: integer
+          minimum: 0
+        defaultPriority:
+          type: boolean
+        priority:
+          type: number
+        averageRequestDurationMs:
+          type: integer
+          minimum: 0
+        estimatedWaitMs:
+          type: integer
+          minimum: 0
+        estimatedStartAt:
+          type: string
+          format: date-time
+    ChatStreamAcceptedEvent:
+      type: object
+      required: [type, meta]
+      properties:
+        type:
+          type: string
+          const: accepted
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+    ChatStreamQueuedEvent:
+      type: object
+      required: [type, meta, data]
+      properties:
+        type:
+          type: string
+          const: queued
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          $ref: '#/components/schemas/QueueWaitInfo'
+    ChatStreamStartedEvent:
+      type: object
+      required: [type, meta]
+      properties:
+        type:
+          type: string
+          const: started
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+    ChatStreamThinkingEvent:
+      type: object
+      required: [type, meta, data]
+      properties:
+        type:
+          type: string
+          const: thinking
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          type: object
+          required: [text]
+          properties:
+            text:
+              type: string
+    ChatStreamChunkEvent:
+      type: object
+      required: [type, meta, data]
+      properties:
+        type:
+          type: string
+          const: chunk
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          type: object
+          required: [text]
+          properties:
+            text:
+              type: string
+    ChatStreamDoneEvent:
+      type: object
+      required: [type, meta, data]
+      description: |
+        Terminal success event. Emitted after the orchestrator persists the
+        completed turn. Differs from the Model Host's `done` event because
+        the orchestrator owns persistence and surfaces the persisted
+        identifiers to the client.
+      properties:
+        type:
+          type: string
+          const: done
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          type: object
+          required: [sessionId, turnId, assistantMessage, finishReason]
+          properties:
+            sessionId:
+              type: string
+              format: uuid
+            turnId:
+              type: string
+              format: uuid
+            assistantMessage:
+              type: object
+              required: [messageId, content, createdAt]
+              properties:
+                messageId:
+                  type: string
+                  format: uuid
+                content:
+                  type: string
+                createdAt:
+                  type: string
+                  format: date-time
+            finishReason:
+              type: string
+              enum: [stop, length, error]
+    ChatStreamErrorEvent:
+      type: object
+      required: [type, meta, error]
+      properties:
+        type:
+          type: string
+          const: error
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        error:
+          $ref: '#/components/schemas/ErrorBody'
+    ChatStreamEvent:
+      oneOf:
+        - $ref: '#/components/schemas/ChatStreamAcceptedEvent'
+        - $ref: '#/components/schemas/ChatStreamQueuedEvent'
+        - $ref: '#/components/schemas/ChatStreamStartedEvent'
+        - $ref: '#/components/schemas/ChatStreamThinkingEvent'
+        - $ref: '#/components/schemas/ChatStreamChunkEvent'
+        - $ref: '#/components/schemas/ChatStreamDoneEvent'
+        - $ref: '#/components/schemas/ChatStreamErrorEvent'

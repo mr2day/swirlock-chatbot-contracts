@@ -1,0 +1,545 @@
+openapi: 3.1.0
+info:
+  title: Swirlock Model Host API
+  version: 2.0.0-draft
+  summary: Agnostic model-host contract for Primary LLM Host and Utility LLM Host.
+  description: >
+    A Model Host exposes one local model for inference and operational health.
+    It owns model loading, keep-alive, queueing, lifecycle behavior, and
+    health/status reporting. It does not own chat, RAG, memory, prompt policy,
+    or business task semantics.
+paths:
+  /v2/infer:
+    post:
+      operationId: infer
+      summary: Run one inference request against the hosted model
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InferRequest'
+      responses:
+        '200':
+          description: Model inference completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InferResponse'
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v2/infer/stream:
+    get:
+      operationId: streamInfer
+      summary: Open a WebSocket inference stream
+      description: |
+        Upgrade this route to a WebSocket connection. After the connection opens,
+        the client sends exactly one `StreamInferMessage`. The server responds
+        with one JSON `StreamEvent` per WebSocket message and closes the
+        connection after `done` or `error`.
+
+        The stream is the preferred transport when callers want to display
+        thinking text, response chunks, or queue progress in real time.
+      responses:
+        '101':
+          description: WebSocket connection accepted
+        default:
+          description: WebSocket handshake error
+  /v2/health:
+    get:
+      operationId: getHealth
+      summary: Return process liveness and readiness
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationId'
+      responses:
+        '200':
+          description: Health returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v2/model/status:
+    get:
+      operationId: getModelStatus
+      summary: Return hosted model status, capabilities, and capacity
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationId'
+      responses:
+        '200':
+          description: Model status returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelStatusResponse'
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v2/model/preload:
+    post:
+      operationId: preloadModel
+      summary: Ask the host to load or refresh keep-alive for the configured model
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelLifecycleRequest'
+      responses:
+        '202':
+          description: Preload request accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelLifecycleResponse'
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v2/model/unload:
+    post:
+      operationId: unloadModel
+      summary: Ask the host to unload the configured model when supported
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelLifecycleRequest'
+      responses:
+        '202':
+          description: Unload request accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelLifecycleResponse'
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+components:
+  parameters:
+    XCorrelationId:
+      name: x-correlation-id
+      in: header
+      required: true
+      schema:
+        type: string
+  schemas:
+    ApiMeta:
+      type: object
+      required: [requestId, correlationId, apiVersion, servedAt]
+      properties:
+        requestId:
+          type: string
+          format: uuid
+        correlationId:
+          type: string
+        apiVersion:
+          type: string
+          const: v2
+        servedAt:
+          type: string
+          format: date-time
+    ErrorBody:
+      type: object
+      required: [code, message, retryable]
+      properties:
+        code:
+          type: string
+          enum:
+            - bad_request
+            - validation_failed
+            - upstream_unavailable
+            - model_unavailable
+            - limit_exceeded
+            - internal_error
+        message:
+          type: string
+        retryable:
+          type: boolean
+        details:
+          type: object
+          additionalProperties: true
+    ErrorEnvelope:
+      type: object
+      required: [meta, error]
+      properties:
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        error:
+          $ref: '#/components/schemas/ErrorBody'
+    RequestContext:
+      type: object
+      required: [callerService, requestedAt]
+      properties:
+        callerService:
+          type: string
+          description: Logical caller name.
+        priority:
+          type: number
+          description: >
+            Optional model-host queue priority. Higher finite numbers run first.
+            If omitted, the request is lower priority than every request that
+            provides a finite priority number. Equal priorities run in arrival
+            order.
+        requestedAt:
+          type: string
+          format: date-time
+        debug:
+          type: boolean
+    TextInputPart:
+      type: object
+      required: [type, text]
+      properties:
+        type:
+          type: string
+          const: text
+        text:
+          type: string
+    ImageInputPart:
+      type: object
+      required: [type]
+      oneOf:
+        - required: [imageBase64]
+        - required: [imageUrl]
+      properties:
+        type:
+          type: string
+          const: image
+        imageBase64:
+          type: string
+          description: Base64 image payload. Data URL prefixes are allowed.
+        imageUrl:
+          type: string
+          format: uri
+        mimeType:
+          type: string
+    InputPart:
+      oneOf:
+        - $ref: '#/components/schemas/TextInputPart'
+        - $ref: '#/components/schemas/ImageInputPart'
+    InferenceInput:
+      type: object
+      required: [parts]
+      properties:
+        parts:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/InputPart'
+    InferenceOptions:
+      type: object
+      properties:
+        responseFormat:
+          type: string
+          enum: [text, json]
+          default: text
+        thinking:
+          type: boolean
+          description: Enable model thinking output when the hosted model and runtime support it.
+        ollama:
+          type: object
+          additionalProperties: true
+          description: >
+            Ollama runtime options passed through by the model host. Callers own
+            task-level policy for these options.
+    InferRequest:
+      type: object
+      required: [requestContext, input]
+      properties:
+        requestContext:
+          $ref: '#/components/schemas/RequestContext'
+        input:
+          $ref: '#/components/schemas/InferenceInput'
+        options:
+          $ref: '#/components/schemas/InferenceOptions'
+    InferResponse:
+      type: object
+      required: [meta, data]
+      properties:
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          type: object
+          required: [modelId, output, finishReason, generatedAt]
+          properties:
+            modelId:
+              type: string
+            output:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+            finishReason:
+              type: string
+              enum: [stop, length, error]
+            generatedAt:
+              type: string
+              format: date-time
+            appliedOptions:
+              $ref: '#/components/schemas/InferenceOptions'
+    StreamInferMessage:
+      type: object
+      required: [type, correlationId, request]
+      properties:
+        type:
+          type: string
+          const: infer
+        correlationId:
+          type: string
+        request:
+          $ref: '#/components/schemas/InferRequest'
+    QueueWaitInfo:
+      type: object
+      required: [position, requestsAhead, queueDepth, defaultPriority]
+      properties:
+        position:
+          type: integer
+          minimum: 1
+          description: Current 1-based position inside the waiting queue.
+        requestsAhead:
+          type: integer
+          minimum: 0
+          description: Active request plus queued requests ahead of this request.
+        queueDepth:
+          type: integer
+          minimum: 0
+          description: Current total queued requests.
+        defaultPriority:
+          type: boolean
+          description: True when the caller omitted requestContext.priority.
+        priority:
+          type: number
+          description: Present only when the caller provided requestContext.priority.
+        averageRequestDurationMs:
+          type: integer
+          minimum: 0
+        estimatedWaitMs:
+          type: integer
+          minimum: 0
+        estimatedStartAt:
+          type: string
+          format: date-time
+    StreamAcceptedEvent:
+      type: object
+      required: [type, meta]
+      properties:
+        type:
+          type: string
+          const: accepted
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+    StreamQueuedEvent:
+      type: object
+      required: [type, meta, data]
+      properties:
+        type:
+          type: string
+          const: queued
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          $ref: '#/components/schemas/QueueWaitInfo'
+    StreamStartedEvent:
+      type: object
+      required: [type, meta]
+      properties:
+        type:
+          type: string
+          const: started
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+    StreamThinkingEvent:
+      type: object
+      required: [type, meta, data]
+      properties:
+        type:
+          type: string
+          const: thinking
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          type: object
+          required: [text]
+          properties:
+            text:
+              type: string
+    StreamChunkEvent:
+      type: object
+      required: [type, meta, data]
+      properties:
+        type:
+          type: string
+          const: chunk
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          type: object
+          required: [text]
+          properties:
+            text:
+              type: string
+    StreamDoneEvent:
+      type: object
+      required: [type, meta, data]
+      properties:
+        type:
+          type: string
+          const: done
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          type: object
+          required: [finishReason, appliedOptions]
+          properties:
+            finishReason:
+              type: string
+              enum: [stop, length, error]
+            appliedOptions:
+              $ref: '#/components/schemas/InferenceOptions'
+    StreamErrorEvent:
+      type: object
+      required: [type, meta, error]
+      properties:
+        type:
+          type: string
+          const: error
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        error:
+          $ref: '#/components/schemas/ErrorBody'
+    StreamEvent:
+      oneOf:
+        - $ref: '#/components/schemas/StreamAcceptedEvent'
+        - $ref: '#/components/schemas/StreamQueuedEvent'
+        - $ref: '#/components/schemas/StreamStartedEvent'
+        - $ref: '#/components/schemas/StreamThinkingEvent'
+        - $ref: '#/components/schemas/StreamChunkEvent'
+        - $ref: '#/components/schemas/StreamDoneEvent'
+        - $ref: '#/components/schemas/StreamErrorEvent'
+    ModelCapabilities:
+      type: object
+      required: [textInput, imageInput, textOutput, imageOutput]
+      properties:
+        textInput:
+          type: boolean
+        imageInput:
+          type: boolean
+        textOutput:
+          type: boolean
+        imageOutput:
+          type: boolean
+    ModelCapacity:
+      type: object
+      required: [activeRequests, modelSlots, queueDepth]
+      properties:
+        activeRequests:
+          type: integer
+          minimum: 0
+        modelSlots:
+          type: integer
+          minimum: 1
+        queueDepth:
+          type: integer
+          minimum: 0
+        averageRequestDurationMs:
+          type: integer
+          minimum: 0
+    HealthResponse:
+      type: object
+      required: [meta, data]
+      properties:
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          type: object
+          required: [status, ready]
+          properties:
+            status:
+              type: string
+              enum: [ok, degraded, unavailable]
+            ready:
+              type: boolean
+    ModelStatusResponse:
+      type: object
+      required: [meta, data]
+      properties:
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          type: object
+          required:
+            - modelId
+            - availableModels
+            - ready
+            - loaded
+            - keepAlive
+            - capabilities
+            - capacity
+          properties:
+            modelId:
+              type: string
+            availableModels:
+              type: array
+              items:
+                type: string
+            ready:
+              type: boolean
+            loaded:
+              type: boolean
+            keepAlive:
+              type: string
+            capabilities:
+              $ref: '#/components/schemas/ModelCapabilities'
+            capacity:
+              $ref: '#/components/schemas/ModelCapacity'
+            runtime:
+              type: object
+              additionalProperties: true
+    ModelLifecycleRequest:
+      type: object
+      required: [requestContext]
+      properties:
+        requestContext:
+          $ref: '#/components/schemas/RequestContext'
+    ModelLifecycleResponse:
+      type: object
+      required: [meta, data]
+      properties:
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          type: object
+          required: [accepted, modelId]
+          properties:
+            accepted:
+              type: boolean
+            modelId:
+              type: string
+            status:
+              type: string
+              enum: [loading, loaded, unloading, unloaded, unsupported]
