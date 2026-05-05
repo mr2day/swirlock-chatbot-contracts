@@ -213,19 +213,23 @@ This route defines how a user message moves through the system. Agents developin
 
 ## Streaming Variants
 
-A service may expose a WebSocket sibling for an otherwise blocking operation when callers need to
-render intermediate output, such as model thinking text, response token chunks, or queue position
-updates. The streaming endpoint sits beside the blocking one and uses an event shape modeled on
-the Model Host stream events: `accepted`, `queued`, `started`, `thinking`, `chunk`, `done`,
-`error`.
+The v3 user-turn path is WebSocket-only. Clients submit turns through
+Chat Orchestrator WebSocket `/v2/chat/sessions/{sessionId}/turns/stream`.
 
-The Chat Orchestrator's streaming variant of `submitChatTurn` preserves the same ownership
-boundaries as the blocking turn submission: the Chat Orchestrator still owns session lifecycle,
-turn persistence, retrieval orchestration, memory recording, and final response shape. Streaming
-is a transport variation, not a different service responsibility. The orchestrator's terminal
-`done` event therefore carries the persisted identifiers (`turnId`,
-`assistantMessage.messageId`, `createdAt`) in addition to `finishReason`, because the orchestrator
-is what writes them.
+The Chat Orchestrator still owns session lifecycle, turn persistence,
+retrieval orchestration, memory recording, and final response shape. During
+the WebSocket turn, it calls RAG Engine WebSocket
+`/v2/retrieval/evidence/stream`, forwards each RAG `RetrievalStreamEvent`
+to the client as a `retrieval` chat-stream event, waits for
+`retrieval.completed`, and only then assembles the final-answer model
+input from the completed evidence package.
+
+The chat stream uses event names modeled on the Model Host stream with the
+additional retrieval progress event: `accepted`, `retrieval`, `queued`,
+`started`, `thinking`, `chunk`, `done`, `error`. The orchestrator's
+terminal `done` event carries the persisted identifiers (`turnId`,
+`assistantMessage.messageId`, `createdAt`), citations, and `finishReason`
+because the orchestrator owns persistence and final response shape.
 
 Bearer authentication on the WebSocket upgrade follows
 `API_CONVENTIONS.md#websocket-authentication`. Authorization failures discovered after a

@@ -28,7 +28,7 @@ final user-facing answer.
   `INTERNAL_INFRASTRUCTURE.md#local-persistent-stores`.
 - Live web retrieval for queries that warrant fresh sources.
 - Evidence packaging that the Chat Orchestrator carries through to
-  `SubmitTurnResponse.citations` and `ChatStreamDoneEvent.data`.
+  `ChatStreamDoneEvent.data`.
 - May call the Embedding Service directly. Direct calls
   `RAG Engine -> Context Fragmenter` are forbidden by the v3 interaction
   model unless the architecture is intentionally revised.
@@ -47,9 +47,9 @@ validation, broader e2e coverage, and larger retrieval evaluations.
 
 Current local implementation status:
 
-- Exposes `POST /v2/retrieval/evidence` and `GET /v2/health`.
-- Exposes `POST /v2/retrieval/evidence/stream` for Server-Sent Events
-  retrieval progress.
+- Exposes `GET /v2/health`.
+- Exposes WebSocket `/v2/retrieval/evidence/stream` for the ecosystem
+  retrieval progress path consumed by Chat Orchestrator.
 - Calls the Utility LLM Host over the v2 WebSocket inference stream for
   query support, image observations from `imageUrl`, extraction summaries,
   and evidence shaping.
@@ -72,17 +72,21 @@ Current local implementation status:
 
 ## Streaming Retrieval
 
-The Chat Orchestrator should call `POST /v2/retrieval/evidence/stream`
-when it wants ChatGPT-style visible search progress. The request body is
-identical to `POST /v2/retrieval/evidence`. The response is
-`text/event-stream`.
+The Chat Orchestrator must call WebSocket `/v2/retrieval/evidence/stream`
+for ChatGPT-style visible search progress. After upgrade, the
+Orchestrator sends exactly one message:
 
-Each SSE message uses:
+```json
+{
+  "type": "retrieve_evidence",
+  "correlationId": "...",
+  "request": { "...": "RetrieveEvidenceRequest" }
+}
+```
 
-- SSE `id`: the event sequence number.
-- SSE `event`: the retrieval event type.
-- SSE `data`: JSON matching `RetrievalStreamEvent` in
-  `openapi/rag-engine.openapi.yaml`.
+The embedded `request` is a `RetrieveEvidenceRequest`. The RAG Engine then
+emits one JSON `RetrievalStreamEvent` per WebSocket message and closes
+after `retrieval.completed` or `retrieval.failed`.
 
 The stream is a progress channel, not an answer-generation channel. RAG
 does not own the final chatbot answer or final model context window. The
@@ -114,8 +118,8 @@ Current event types:
 - `retrieval.completed`
 - `retrieval.failed`
 
-`retrieval.completed` contains `data.retrieval`, whose shape is the same
-as the `data` object returned by the blocking retrieval endpoint.
-`retrieval.failed` is emitted when an error occurs after the SSE stream
-has already been established. If validation fails before the stream is
-established, the service may return the normal JSON error envelope instead.
+`retrieval.completed` contains `data.retrieval`, whose shape is
+`RetrievalPackage` in `openapi/rag-engine.openapi.yaml`.
+`retrieval.failed` is emitted when an error occurs after the WebSocket
+stream has already been established. If validation fails before the stream
+is established, the service emits `retrieval.failed` and closes.

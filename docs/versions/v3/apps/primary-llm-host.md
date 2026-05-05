@@ -20,7 +20,6 @@ construction policy, or final user-facing answer ownership.
 ## Final Form
 
 - Full Model Host API:
-  - `POST /v2/infer` for blocking inference.
   - WebSocket `/v2/infer/stream` for streamed `accepted` / `queued` /
     `started` / `thinking` / `chunk` / `done` / `error` events.
   - `GET /v2/health` for liveness/readiness.

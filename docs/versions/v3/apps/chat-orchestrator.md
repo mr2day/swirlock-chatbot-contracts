@@ -17,15 +17,15 @@ When complete, the Chat Orchestrator provides:
 
 - The full client-facing API surface:
   - `POST /v2/chat/sessions` to create a session.
-  - `POST /v2/chat/sessions/{sessionId}/turns` for blocking turn submission.
   - WebSocket `/v2/chat/sessions/{sessionId}/turns/stream` for streamed
-    `accepted` / `queued` / `started` / `thinking` / `chunk` / `done` /
-    `error` events terminating with persisted-turn identifiers
-    (`sessionId`, `turnId`, `assistantMessage.messageId`, `createdAt`).
+    `accepted` / `retrieval` / `queued` / `started` / `thinking` /
+    `chunk` / `done` / `error` events terminating with persisted-turn
+    identifiers (`sessionId`, `turnId`, `assistantMessage.messageId`,
+    `createdAt`) and citations.
 - Coordination across:
   - Context Fragmenter for memory recording, selection, and consolidation.
   - RAG Engine for retrieval, evidence packaging, and citation propagation
-    into `SubmitTurnResponse.citations` and `ChatStreamDoneEvent.data`.
+    into `ChatStreamDoneEvent.data`.
   - Primary LLM Host for normal final-answer inference, including direct
     image-input routing when the hosted model advertises `imageInput: true`.
   - Utility LLM Host as explicitly allowed degraded final-answer fallback,
@@ -52,10 +52,11 @@ In priority order:
    `service.config.cjs`.
 2. **Multi-user support.** Bind sessions, turns, and persisted messages to
    the authenticated user identity rather than the single dev user.
-3. **RAG Engine integration.** Implement the HTTP client behind the
-   existing `RagService` hook, surface returned evidence as `citations`
-   on both the blocking response and the streaming `done` event, and
-   surface retrieval diagnostics when requested.
+3. **RAG Engine integration.** Implement the WebSocket client behind the
+   existing `RagService` hook, forward retrieval progress as `retrieval`
+   chat-stream events, surface returned evidence as `citations` on the
+   streaming `done` event, and surface retrieval diagnostics when
+   requested.
 4. **Context Fragmenter integration.** Call Context Fragmenter for memory
    selection before final inference, and for memory recording after the
    turn is persisted. Stop persisting whole conversations once the
@@ -81,10 +82,13 @@ What is built:
   `INTERNAL_INFRASTRUCTURE.md#runtime-configuration-source-of-truth`).
 - Sessions and per-turn user/assistant messages stored whole in a local
   SQLite database. No Context Fragmenter, no memory compression.
-- No RAG Engine integration. The orchestrator's `RagService` is a no-op
-  hook with the shape needed to swap in the real client later.
+- RAG Engine integration over WebSocket. The orchestrator opens
+  `ws://<rag-engine>/v2/retrieval/evidence/stream`, sends one
+  `retrieve_evidence` message, forwards each returned
+  `RetrievalStreamEvent` to the client as a `retrieval` chat-stream event,
+  and uses `retrieval.completed.data.retrieval` to build the final-answer
+  prompt and citations.
 - The orchestrator calls a single configured Model Host directly:
-  - `POST /v2/infer` for the blocking endpoint.
   - WebSocket `/v2/infer/stream` for the streaming endpoint, forwarding
     `queued` / `started` / `thinking` / `chunk` events through to the
     client and persisting the assembled assistant message before emitting
@@ -99,7 +103,6 @@ What is built:
     Host API is agnostic.
 - Endpoints implemented:
   - `POST /v2/chat/sessions` (per contract).
-  - `POST /v2/chat/sessions/{sessionId}/turns` (per contract, blocking).
   - WebSocket `/v2/chat/sessions/{sessionId}/turns/stream` (per contract,
     streaming).
   - `GET /v2/chat/sessions/{sessionId}` (extension, for local development:
@@ -110,8 +113,8 @@ What is built:
 - v3 envelope shape on all responses, including the `ErrorEnvelope` shape
   on every non-2xx HTTP response and on the WebSocket `error` event.
 - `x-correlation-id` is honored when supplied by the client and generated
-  otherwise. The same correlation ID is forwarded to the Primary LLM Host
-  on both the blocking and streaming paths.
+  otherwise. The same correlation ID is forwarded to the RAG Engine and
+  Primary LLM Host on the WebSocket turn path.
 - Image input is supported only via `imageUrl`. `imageId` resolution is
   not implemented and is rejected with a `bad_request` error.
 - WebSocket bearer auth on the upgrade accepts all three transports listed
@@ -120,7 +123,6 @@ What is built:
 What is not yet built:
 
 - Real authentication and multi-user identity.
-- RAG Engine integration and citation propagation.
 - Context Fragmenter integration and memory selection/recording.
 - Degraded final-answer fallback to the Utility LLM Host.
 - `imageId` resolution.

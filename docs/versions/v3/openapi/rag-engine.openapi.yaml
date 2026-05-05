@@ -4,80 +4,26 @@ info:
   version: 2.0.0-draft
   summary: Retrieval and evidence contract for the Swirlock chatbot.
 paths:
-  /v2/retrieval/evidence:
-    post:
-      operationId: retrieveEvidence
-      summary: Retrieve evidence from local knowledge, live web, or both
-      parameters:
-        - $ref: '#/components/parameters/XCorrelationId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RetrieveEvidenceRequest'
-      responses:
-        '200':
-          description: Evidence package returned
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RetrieveEvidenceResponse'
-        default:
-          description: Error response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
   /v2/retrieval/evidence/stream:
-    post:
-      operationId: streamRetrieveEvidence
-      summary: Stream retrieval progress and return the final evidence package
+    get:
+      operationId: streamRetrieveEvidenceWebSocket
+      summary: Open a WebSocket retrieval progress stream
       description: >
-        Accepts the same request body as `/v2/retrieval/evidence`, but returns
-        Server-Sent Events (`text/event-stream`). Each SSE uses
-        `RetrievalStreamEvent.type` as the SSE event name and a JSON
-        `RetrievalStreamEvent` as the data payload. The final successful event is
-        `retrieval.completed`; its `data.retrieval` value has the same shape as
-        `RetrieveEvidenceResponse.data`.
+        Upgrade this route to a WebSocket connection. After the connection
+        opens, the caller sends exactly one `RetrieveEvidenceStreamMessage`.
+        The RAG Engine responds with one JSON `RetrievalStreamEvent` per
+        WebSocket message and closes the connection after
+        `retrieval.completed` or `retrieval.failed`. This WebSocket
+        transport is the canonical ecosystem path for Chat Orchestrator
+        integration. The final successful event is `retrieval.completed`;
+        its `data.retrieval` value contains the completed evidence package.
       parameters:
         - $ref: '#/components/parameters/XCorrelationId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RetrieveEvidenceRequest'
       responses:
-        '200':
-          description: Retrieval progress stream
-          content:
-            text/event-stream:
-              schema:
-                type: string
-                description: >
-                  Server-Sent Events. Each `data:` line is a JSON
-                  `RetrievalStreamEvent`.
-              examples:
-                progress:
-                  value: |
-                    id: 1
-                    event: retrieval.started
-                    data: {"type":"retrieval.started","sequence":1,"occurredAt":"2026-05-05T12:00:00.000Z","data":{"freshness":"low","allowedModes":["local_rag","live_web"]}}
-
-                    id: 2
-                    event: live.search.completed
-                    data: {"type":"live.search.completed","sequence":2,"occurredAt":"2026-05-05T12:00:01.000Z","data":{"resultCount":3,"sources":[]}}
-
-                    id: 3
-                    event: retrieval.completed
-                    data: {"type":"retrieval.completed","sequence":3,"occurredAt":"2026-05-05T12:00:02.000Z","data":{"retrieval":{"normalizedQuery":{},"searchQueries":[],"evidenceChunks":[],"retrievalDiagnostics":{}}}}
+        '101':
+          description: WebSocket connection accepted
         default:
-          description: Error response before the stream is established
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
+          description: WebSocket handshake error
   /v2/health:
     get:
       operationId: getHealth
@@ -315,142 +261,151 @@ components:
         retrievedAt:
           type: string
           format: date-time
-    RetrieveEvidenceResponse:
+    RetrievalPackage:
       type: object
-      required: [meta, data]
+      required:
+        - normalizedQuery
+        - searchQueries
+        - evidenceChunks
       properties:
-        meta:
-          $ref: '#/components/schemas/ApiMeta'
-        data:
+        normalizedQuery:
+          $ref: '#/components/schemas/NormalizedQuery'
+        searchQueries:
+          type: array
+          items:
+            type: string
+        evidenceChunks:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceChunk'
+        evidenceSynthesis:
           type: object
-          required:
-            - normalizedQuery
-            - searchQueries
-            - evidenceChunks
           properties:
-            normalizedQuery:
-              $ref: '#/components/schemas/NormalizedQuery'
-            searchQueries:
+            summary:
+              type: string
+            confidence:
+              type: string
+              enum: [low, medium, high]
+            caveats:
               type: array
               items:
                 type: string
-            evidenceChunks:
+        retrievalDiagnostics:
+          type: object
+          properties:
+            liveSearchPerformed:
+              type: boolean
+            localSearchPerformed:
+              type: boolean
+            durationMs:
+              type: integer
+              minimum: 0
+            localResultCount:
+              type: integer
+              minimum: 0
+            liveResultCount:
+              type: integer
+              minimum: 0
+            liveSearchError:
+              type: string
+            warnings:
               type: array
               items:
-                $ref: '#/components/schemas/EvidenceChunk'
-            evidenceSynthesis:
+                type: string
+            utilityLlm:
               type: object
+              description: Optional degraded-mode diagnostics for Utility LLM Host support calls.
               properties:
-                summary:
+                enabled:
+                  type: boolean
+                configuredUrl:
                   type: string
-                confidence:
-                  type: string
-                  enum: [low, medium, high]
-                caveats:
+                usedForQuery:
+                  type: boolean
+                usedForImages:
+                  type: boolean
+                usedForExtractionSummaries:
+                  type: boolean
+                usedForEvidenceSynthesis:
+                  type: boolean
+                calls:
                   type: array
                   items:
-                    type: string
-            retrievalDiagnostics:
+                    type: object
+                    properties:
+                      task:
+                        type: string
+                      attempted:
+                        type: boolean
+                      succeeded:
+                        type: boolean
+                      durationMs:
+                        type: integer
+                        minimum: 0
+                      attempts:
+                        type: integer
+                        minimum: 0
+                      error:
+                        type: string
+            embeddingService:
               type: object
+              description: Optional degraded-mode diagnostics for Embedding Service calls.
               properties:
-                liveSearchPerformed:
+                enabled:
                   type: boolean
-                localSearchPerformed:
-                  type: boolean
-                durationMs:
-                  type: integer
-                  minimum: 0
-                localResultCount:
-                  type: integer
-                  minimum: 0
-                liveResultCount:
-                  type: integer
-                  minimum: 0
-                liveSearchError:
+                configuredUrl:
                   type: string
-                warnings:
+                modelId:
+                  type: string
+                dimensions:
+                  type: integer
+                  minimum: 1
+                usedForQuery:
+                  type: boolean
+                calls:
                   type: array
                   items:
-                    type: string
-                utilityLlm:
-                  type: object
-                  description: Optional degraded-mode diagnostics for Utility LLM Host support calls.
-                  properties:
-                    enabled:
-                      type: boolean
-                    configuredUrl:
-                      type: string
-                    usedForQuery:
-                      type: boolean
-                    usedForImages:
-                      type: boolean
-                    usedForExtractionSummaries:
-                      type: boolean
-                    usedForEvidenceSynthesis:
-                      type: boolean
-                    calls:
-                      type: array
-                      items:
-                        type: object
-                        properties:
-                          task:
-                            type: string
-                          attempted:
-                            type: boolean
-                          succeeded:
-                            type: boolean
-                          durationMs:
-                            type: integer
-                            minimum: 0
-                          attempts:
-                            type: integer
-                            minimum: 0
-                          error:
-                            type: string
-                embeddingService:
-                  type: object
-                  description: Optional degraded-mode diagnostics for Embedding Service calls.
-                  properties:
-                    enabled:
-                      type: boolean
-                    configuredUrl:
-                      type: string
-                    modelId:
-                      type: string
-                    dimensions:
-                      type: integer
-                      minimum: 1
-                    usedForQuery:
-                      type: boolean
-                    calls:
-                      type: array
-                      items:
-                        type: object
-                        properties:
-                          attempted:
-                            type: boolean
-                          succeeded:
-                            type: boolean
-                          durationMs:
-                            type: integer
-                            minimum: 0
-                          attempts:
-                            type: integer
-                            minimum: 0
-                          inputCount:
-                            type: integer
-                            minimum: 0
-                          inputType:
-                            type: string
-                            enum: [query, document]
-                          error:
-                            type: string
-                knowledgeStorePath:
-                  type: string
-                  description: Redacted local storage location for diagnostics only.
-                knowledgeStoreKind:
-                  type: string
-                  enum: [postgresql, json_file]
+                    type: object
+                    properties:
+                      attempted:
+                        type: boolean
+                      succeeded:
+                        type: boolean
+                      durationMs:
+                        type: integer
+                        minimum: 0
+                      attempts:
+                        type: integer
+                        minimum: 0
+                      inputCount:
+                        type: integer
+                        minimum: 0
+                      inputType:
+                        type: string
+                        enum: [query, document]
+                      error:
+                        type: string
+            knowledgeStorePath:
+              type: string
+              description: Redacted local storage location for diagnostics only.
+            knowledgeStoreKind:
+              type: string
+              enum: [postgresql, json_file]
+    RetrieveEvidenceStreamMessage:
+      type: object
+      required: [type, correlationId, request]
+      description: >
+        First and only caller-to-RAG message on the retrieval WebSocket.
+        After this message is accepted, the RAG Engine emits
+        `RetrievalStreamEvent` messages until terminal completion or failure.
+      properties:
+        type:
+          type: string
+          const: retrieve_evidence
+        correlationId:
+          type: string
+        request:
+          $ref: '#/components/schemas/RetrieveEvidenceRequest'
     RetrievalStreamEvent:
       type: object
       required: [type, sequence, occurredAt, data]
@@ -490,7 +445,7 @@ components:
           additionalProperties: true
           description: >
             Event-specific payload. For `retrieval.completed`,
-            `data.retrieval` has the same shape as `RetrieveEvidenceResponse.data`.
+            `data.retrieval` has the same shape as `RetrievalPackage`.
     HealthResponse:
       type: object
       required: [meta, data]

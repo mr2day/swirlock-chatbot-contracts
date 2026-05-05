@@ -30,32 +30,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
-  /v2/chat/sessions/{sessionId}/turns:
-    post:
-      operationId: submitChatTurn
-      summary: Submit one user turn and receive one assistant turn
-      parameters:
-        - $ref: '#/components/parameters/SessionId'
-        - $ref: '#/components/parameters/XCorrelationId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/SubmitTurnRequest'
-      responses:
-        '200':
-          description: Assistant turn generated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SubmitTurnResponse'
-        default:
-          description: Error response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
   /v2/chat/sessions/{sessionId}/turns/stream:
     get:
       operationId: streamChatTurn
@@ -64,13 +38,19 @@ paths:
         Upgrade this route to a WebSocket connection. After the connection
         opens, the client sends exactly one `SubmitTurnStreamMessage`. The
         orchestrator responds with zero or more JSON `ChatStreamEvent`
-        messages and closes the connection after `done` or `error`.
+        messages and closes the connection after `done` or `error`. This is
+        the only supported turn-submission path for the v3 ecosystem.
 
-        The orchestrator buffers `chunk` text on its side and atomically
-        persists the user and assistant messages once the upstream Model
-        Host emits its terminal `done` event. The orchestrator's `done`
+        During a turn, the orchestrator calls RAG Engine over its WebSocket
+        retrieval stream and forwards each `RetrievalStreamEvent` inside a
+        `retrieval` chat stream event. After `retrieval.completed`, it builds
+        the final-answer prompt from the returned evidence package.
+
+        The orchestrator buffers final-answer `chunk` text on its side and
+        atomically persists the user and assistant messages once the upstream
+        Model Host emits its terminal `done` event. The orchestrator's `done`
         event therefore carries the persisted `turnId`,
-        `assistantMessage.messageId`, and `createdAt`, in addition to
+        `assistantMessage.messageId`, `createdAt`, citations, and
         `finishReason`.
 
         Authentication on the upgrade request uses one of the bearer
@@ -294,10 +274,6 @@ components:
         options:
           type: object
           properties:
-            responseMode:
-              type: string
-              enum: [blocking]
-              default: blocking
             maxOutputTokens:
               type: integer
               minimum: 1
@@ -307,10 +283,8 @@ components:
             thinking:
               type: boolean
               description: |
-                Request upstream `thinking` events from the Model Host when
-                the orchestrator is invoked through the streaming endpoint.
-                Ignored on the blocking endpoint. Defaults to `true` on the
-                streaming endpoint when omitted.
+                Request upstream `thinking` events from the Model Host.
+                Defaults to `true` on the streaming endpoint when omitted.
     CitationRef:
       type: object
       required:
@@ -325,57 +299,6 @@ components:
         sourceUrl:
           type: string
           format: uri
-    SubmitTurnResponse:
-      type: object
-      required:
-        - meta
-        - data
-      properties:
-        meta:
-          $ref: '#/components/schemas/ApiMeta'
-        data:
-          type: object
-          required:
-            - sessionId
-            - turnId
-            - assistantMessage
-          properties:
-            sessionId:
-              type: string
-              format: uuid
-            turnId:
-              type: string
-              format: uuid
-            assistantMessage:
-              type: object
-              required:
-                - messageId
-                - content
-                - createdAt
-              properties:
-                messageId:
-                  type: string
-                  format: uuid
-                content:
-                  type: string
-                createdAt:
-                  type: string
-                  format: date-time
-            citations:
-              type: array
-              items:
-                $ref: '#/components/schemas/CitationRef'
-            diagnostics:
-              type: object
-              properties:
-                retrievalUsed:
-                  type: boolean
-                memoryFragmentCount:
-                  type: integer
-                  minimum: 0
-                retrievalMode:
-                  type: string
-                  enum: [none, local_rag, live_web, local_and_live]
     SubmitTurnStreamMessage:
       type: object
       required: [type, correlationId, request]
@@ -451,6 +374,34 @@ components:
           const: started
         meta:
           $ref: '#/components/schemas/ApiMeta'
+    ChatStreamRetrievalEvent:
+      type: object
+      required: [type, meta, data]
+      description: >
+        RAG Engine retrieval progress forwarded by the Chat Orchestrator.
+        `data` is the exact `RetrievalStreamEvent` received from
+        RAG Engine's WebSocket retrieval stream.
+      properties:
+        type:
+          type: string
+          const: retrieval
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          type: object
+          required: [type, sequence, occurredAt, data]
+          properties:
+            type:
+              type: string
+            sequence:
+              type: integer
+              minimum: 1
+            occurredAt:
+              type: string
+              format: date-time
+            data:
+              type: object
+              additionalProperties: true
     ChatStreamThinkingEvent:
       type: object
       required: [type, meta, data]
@@ -520,6 +471,21 @@ components:
             finishReason:
               type: string
               enum: [stop, length, error]
+            citations:
+              type: array
+              items:
+                $ref: '#/components/schemas/CitationRef'
+            diagnostics:
+              type: object
+              properties:
+                retrievalUsed:
+                  type: boolean
+                memoryFragmentCount:
+                  type: integer
+                  minimum: 0
+                retrievalMode:
+                  type: string
+                  enum: [none, local_rag, live_web, local_and_live]
     ChatStreamErrorEvent:
       type: object
       required: [type, meta, error]
@@ -536,6 +502,7 @@ components:
         - $ref: '#/components/schemas/ChatStreamAcceptedEvent'
         - $ref: '#/components/schemas/ChatStreamQueuedEvent'
         - $ref: '#/components/schemas/ChatStreamStartedEvent'
+        - $ref: '#/components/schemas/ChatStreamRetrievalEvent'
         - $ref: '#/components/schemas/ChatStreamThinkingEvent'
         - $ref: '#/components/schemas/ChatStreamChunkEvent'
         - $ref: '#/components/schemas/ChatStreamDoneEvent'

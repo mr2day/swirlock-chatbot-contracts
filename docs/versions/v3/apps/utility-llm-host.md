@@ -18,8 +18,8 @@ semantics, image storage, chat semantics, or task interpretation.
 
 ## Final Form
 
-- Same Model Host API surface as the Primary LLM Host (`/v2/infer`,
-  `/v2/infer/stream`, `/v2/health`, `/v2/model/status`,
+- Same Model Host API surface as the Primary LLM Host (`/v2/infer/stream`,
+  `/v2/health`, `/v2/model/status`,
   `/v2/model/preload`, `/v2/model/unload`).
 - Hosted model: `gemma4:e4b` on Ollama, with text and image input enabled.
   Capability symmetry with the Primary LLM Host does not collapse

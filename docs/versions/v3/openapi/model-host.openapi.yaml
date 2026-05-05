@@ -9,31 +9,6 @@ info:
     health/status reporting. It does not own chat, RAG, memory, prompt policy,
     or business task semantics.
 paths:
-  /v2/infer:
-    post:
-      operationId: infer
-      summary: Run one inference request against the hosted model
-      parameters:
-        - $ref: '#/components/parameters/XCorrelationId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/InferRequest'
-      responses:
-        '200':
-          description: Model inference completed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InferResponse'
-        default:
-          description: Error response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
   /v2/infer/stream:
     get:
       operationId: streamInfer
@@ -44,8 +19,9 @@ paths:
         with one JSON `StreamEvent` per WebSocket message and closes the
         connection after `done` or `error`.
 
-        The stream is the preferred transport when callers want to display
-        thinking text, response chunks, or queue progress in real time.
+        This WebSocket stream is the inference transport for the Swirlock
+        ecosystem. It carries thinking text, response chunks, and queue
+        progress in real time.
       responses:
         '101':
           description: WebSocket connection accepted
@@ -276,32 +252,6 @@ components:
           $ref: '#/components/schemas/InferenceInput'
         options:
           $ref: '#/components/schemas/InferenceOptions'
-    InferResponse:
-      type: object
-      required: [meta, data]
-      properties:
-        meta:
-          $ref: '#/components/schemas/ApiMeta'
-        data:
-          type: object
-          required: [modelId, output, finishReason, generatedAt]
-          properties:
-            modelId:
-              type: string
-            output:
-              type: object
-              required: [text]
-              properties:
-                text:
-                  type: string
-            finishReason:
-              type: string
-              enum: [stop, length, error]
-            generatedAt:
-              type: string
-              format: date-time
-            appliedOptions:
-              $ref: '#/components/schemas/InferenceOptions'
     StreamInferMessage:
       type: object
       required: [type, correlationId, request]
