@@ -29,6 +29,55 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /v2/retrieval/evidence/stream:
+    post:
+      operationId: streamRetrieveEvidence
+      summary: Stream retrieval progress and return the final evidence package
+      description: >
+        Accepts the same request body as `/v2/retrieval/evidence`, but returns
+        Server-Sent Events (`text/event-stream`). Each SSE uses
+        `RetrievalStreamEvent.type` as the SSE event name and a JSON
+        `RetrievalStreamEvent` as the data payload. The final successful event is
+        `retrieval.completed`; its `data.retrieval` value has the same shape as
+        `RetrieveEvidenceResponse.data`.
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RetrieveEvidenceRequest'
+      responses:
+        '200':
+          description: Retrieval progress stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: >
+                  Server-Sent Events. Each `data:` line is a JSON
+                  `RetrievalStreamEvent`.
+              examples:
+                progress:
+                  value: |
+                    id: 1
+                    event: retrieval.started
+                    data: {"type":"retrieval.started","sequence":1,"occurredAt":"2026-05-05T12:00:00.000Z","data":{"freshness":"low","allowedModes":["local_rag","live_web"]}}
+
+                    id: 2
+                    event: live.search.completed
+                    data: {"type":"live.search.completed","sequence":2,"occurredAt":"2026-05-05T12:00:01.000Z","data":{"resultCount":3,"sources":[]}}
+
+                    id: 3
+                    event: retrieval.completed
+                    data: {"type":"retrieval.completed","sequence":3,"occurredAt":"2026-05-05T12:00:02.000Z","data":{"retrieval":{"normalizedQuery":{},"searchQueries":[],"evidenceChunks":[],"retrievalDiagnostics":{}}}}
+        default:
+          description: Error response before the stream is established
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /v2/health:
     get:
       operationId: getHealth
@@ -402,6 +451,46 @@ components:
                 knowledgeStoreKind:
                   type: string
                   enum: [postgresql, json_file]
+    RetrievalStreamEvent:
+      type: object
+      required: [type, sequence, occurredAt, data]
+      properties:
+        type:
+          type: string
+          enum:
+            - retrieval.started
+            - utility_llm.retrieval_support.started
+            - utility_llm.retrieval_support.completed
+            - query.normalized
+            - embedding.query.started
+            - embedding.query.completed
+            - local.search.started
+            - local.search.completed
+            - retrieval.policy.decided
+            - live.search.started
+            - live.search.completed
+            - live.extract.started
+            - live.extract.completed
+            - utility_llm.extraction_summaries.started
+            - utility_llm.extraction_summaries.completed
+            - evidence.chunk
+            - utility_llm.evidence_synthesis.started
+            - utility_llm.evidence_synthesis.completed
+            - retrieval.completed
+            - retrieval.failed
+        sequence:
+          type: integer
+          minimum: 1
+          description: Monotonic event sequence within one stream.
+        occurredAt:
+          type: string
+          format: date-time
+        data:
+          type: object
+          additionalProperties: true
+          description: >
+            Event-specific payload. For `retrieval.completed`,
+            `data.retrieval` has the same shape as `RetrieveEvidenceResponse.data`.
     HealthResponse:
       type: object
       required: [meta, data]

@@ -48,6 +48,8 @@ validation, broader e2e coverage, and larger retrieval evaluations.
 Current local implementation status:
 
 - Exposes `POST /v2/retrieval/evidence` and `GET /v2/health`.
+- Exposes `POST /v2/retrieval/evidence/stream` for Server-Sent Events
+  retrieval progress.
 - Calls the Utility LLM Host over the v2 WebSocket inference stream for
   query support, image observations from `imageUrl`, extraction summaries,
   and evidence shaping.
@@ -67,3 +69,53 @@ Current local implementation status:
   Service support is unavailable; diagnostics are returned under
   `retrievalDiagnostics.utilityLlm` and
   `retrievalDiagnostics.embeddingService`.
+
+## Streaming Retrieval
+
+The Chat Orchestrator should call `POST /v2/retrieval/evidence/stream`
+when it wants ChatGPT-style visible search progress. The request body is
+identical to `POST /v2/retrieval/evidence`. The response is
+`text/event-stream`.
+
+Each SSE message uses:
+
+- SSE `id`: the event sequence number.
+- SSE `event`: the retrieval event type.
+- SSE `data`: JSON matching `RetrievalStreamEvent` in
+  `openapi/rag-engine.openapi.yaml`.
+
+The stream is a progress channel, not an answer-generation channel. RAG
+does not own the final chatbot answer or final model context window. The
+Orchestrator should use early events such as `live.search.completed`,
+`live.extract.completed`, and `evidence.chunk` to display "searching" UI
+and discovered sources. It should wait for `retrieval.completed` before
+building the final answer prompt from the completed evidence package.
+
+Current event types:
+
+- `retrieval.started`
+- `utility_llm.retrieval_support.started`
+- `utility_llm.retrieval_support.completed`
+- `query.normalized`
+- `embedding.query.started`
+- `embedding.query.completed`
+- `local.search.started`
+- `local.search.completed`
+- `retrieval.policy.decided`
+- `live.search.started`
+- `live.search.completed`
+- `live.extract.started`
+- `live.extract.completed`
+- `utility_llm.extraction_summaries.started`
+- `utility_llm.extraction_summaries.completed`
+- `evidence.chunk`
+- `utility_llm.evidence_synthesis.started`
+- `utility_llm.evidence_synthesis.completed`
+- `retrieval.completed`
+- `retrieval.failed`
+
+`retrieval.completed` contains `data.retrieval`, whose shape is the same
+as the `data` object returned by the blocking retrieval endpoint.
+`retrieval.failed` is emitted when an error occurs after the SSE stream
+has already been established. If validation fails before the stream is
+established, the service may return the normal JSON error envelope instead.
