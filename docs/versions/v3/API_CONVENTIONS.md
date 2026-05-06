@@ -11,11 +11,26 @@ This document defines shared conventions for Swirlock service contracts in `v3`.
 The `v3` contracts use:
 
 - HTTP
+- persistent WebSocket streams for hot service-to-service paths
 - JSON request and response bodies
 - UTF-8 text
 - URL versioning with `/v2/...` (unchanged from `v2`)
 
 Binary multipart uploads are out of scope for cross-service domain APIs.
+
+Hard transport rule: each service-to-service relationship must keep a
+persistent WebSocket open for hot-path application messages. A service must not
+open a fresh HTTP request or a fresh WebSocket per user turn, retrieval request,
+model inference, embedding request, or other latency-sensitive ecosystem call
+when both services are long-running Swirlock components. HTTP remains
+acceptable for cold control-plane operations such as health, status, lifecycle,
+debugging, and compatibility endpoints.
+
+Persistent service WebSockets are point-to-point between two services. A caller
+may keep separate persistent sockets to multiple upstream services. Each
+application message on a persistent socket must carry a `correlationId`, and
+responses/events must carry the same `correlationId` so concurrent in-flight
+work can be multiplexed safely over one socket.
 
 ## Runtime Configuration
 
@@ -103,12 +118,22 @@ requests, including omitted-priority requests, run in arrival order.
 
 ## Model Host Queue Events
 
-The model-host WebSocket stream accepts one inference request per connection. The client sends a
-`StreamInferMessage` with:
+The model-host WebSocket stream is persistent. A service client opens one
+long-lived WebSocket to the model host and sends one `StreamInferMessage` per
+inference request over that socket. The host must not close the WebSocket after
+`done` or `error`; it keeps the connection open for later requests unless the
+connection is unhealthy, the client closes it, or the host is shutting down.
+
+Each `StreamInferMessage` contains:
 
 - `type`: `infer`
 - `correlationId`: stable request or turn id
 - `request`: an `InferRequest`
+
+Every model-host stream event must carry the same `correlationId` as the
+request it belongs to, either as a top-level `correlationId` field, inside
+`meta.correlationId`, or both. Callers must route interleaved events by
+`correlationId`.
 
 If the model slot is busy, the request remains accepted and the host sends `queued` events while it
 waits. These events let the client decide whether to keep waiting or close the WebSocket. A queued

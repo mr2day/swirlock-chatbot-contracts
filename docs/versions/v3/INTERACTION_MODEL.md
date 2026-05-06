@@ -218,9 +218,9 @@ Chat Orchestrator WebSocket `/v2/chat/sessions/{sessionId}/turns/stream`.
 
 The Chat Orchestrator still owns session lifecycle, turn persistence,
 retrieval orchestration, memory recording, and final response shape. During
-the WebSocket turn, it calls RAG Engine WebSocket
+the WebSocket turn, it uses its persistent RAG Engine WebSocket
 `/v2/retrieval/evidence/stream`, forwards each RAG `RetrievalStreamEvent`
-to the client as a `retrieval` chat-stream event, waits for
+for the turn's `correlationId` to the client as a `retrieval` chat-stream event, waits for
 `retrieval.completed`, and only then assembles the final-answer model
 input from the completed evidence package.
 

@@ -7,13 +7,15 @@ paths:
   /v2/retrieval/evidence/stream:
     get:
       operationId: streamRetrieveEvidenceWebSocket
-      summary: Open a WebSocket retrieval progress stream
+      summary: Open a persistent WebSocket retrieval progress stream
       description: >
-        Upgrade this route to a WebSocket connection. After the connection
-        opens, the caller sends exactly one `RetrieveEvidenceStreamMessage`.
+        Upgrade this route to a persistent WebSocket connection. Service callers
+        keep one connection open to the RAG Engine and send one
+        `RetrieveEvidenceStreamMessage` per retrieval request over that socket.
         The RAG Engine responds with one JSON `RetrievalStreamEvent` per
-        WebSocket message and closes the connection after
-        `retrieval.completed` or `retrieval.failed`. This WebSocket
+        WebSocket message and keeps the connection open after
+        `retrieval.completed` or `retrieval.failed` so later retrieval requests
+        can reuse the same transport. This WebSocket
         transport is the canonical ecosystem path for Chat Orchestrator
         integration. The final successful event is `retrieval.completed`;
         its `data.retrieval` value contains the completed evidence package.
@@ -395,9 +397,10 @@ components:
       type: object
       required: [type, correlationId, request]
       description: >
-        First and only caller-to-RAG message on the retrieval WebSocket.
-        After this message is accepted, the RAG Engine emits
-        `RetrievalStreamEvent` messages until terminal completion or failure.
+        Caller-to-RAG message sent once per retrieval request on the persistent
+        retrieval WebSocket. After this message is accepted, the RAG Engine
+        emits `RetrievalStreamEvent` messages for the same `correlationId`
+        until terminal completion or failure.
       properties:
         type:
           type: string
@@ -408,7 +411,7 @@ components:
           $ref: '#/components/schemas/RetrieveEvidenceRequest'
     RetrievalStreamEvent:
       type: object
-      required: [type, sequence, occurredAt, data]
+      required: [type, correlationId, sequence, occurredAt, data]
       properties:
         type:
           type: string
@@ -433,10 +436,13 @@ components:
             - utility_llm.evidence_synthesis.completed
             - retrieval.completed
             - retrieval.failed
+        correlationId:
+          type: string
+          description: Correlation id from the matching RetrieveEvidenceStreamMessage.
         sequence:
           type: integer
           minimum: 1
-          description: Monotonic event sequence within one stream.
+          description: Monotonic event sequence within one retrieval request.
         occurredAt:
           type: string
           format: date-time

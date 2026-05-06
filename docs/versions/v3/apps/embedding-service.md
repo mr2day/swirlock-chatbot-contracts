@@ -20,8 +20,9 @@ vectors.
 
 ## Final Form
 
-- Full Embedding Service API: vectorization, model health, and lifecycle
-  controls in the same agnostic-appliance pattern as the Model Host API.
+- Full Embedding Service API: persistent WebSocket vectorization, model health,
+  and lifecycle controls in the same agnostic-appliance pattern as the Model
+  Host API.
 - Single source of truth for model availability, capabilities, and health.
 - CPU-only neural service when co-located with an accelerator-bound
   service. The current canonical example is co-location on the Utility

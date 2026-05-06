@@ -33,13 +33,15 @@ paths:
   /v2/chat/sessions/{sessionId}/turns/stream:
     get:
       operationId: streamChatTurn
-      summary: Open a WebSocket stream for one user turn
+      summary: Open a persistent WebSocket stream for chat turns
       description: |
-        Upgrade this route to a WebSocket connection. After the connection
-        opens, the client sends exactly one `SubmitTurnStreamMessage`. The
-        orchestrator responds with zero or more JSON `ChatStreamEvent`
-        messages and closes the connection after `done` or `error`. This is
-        the only supported turn-submission path for the v3 ecosystem.
+        Upgrade this route to a persistent WebSocket connection. After the
+        connection opens, the client may send multiple `SubmitTurnStreamMessage`
+        envelopes over the same session socket. The orchestrator responds with
+        zero or more JSON `ChatStreamEvent` messages for each turn and keeps the
+        connection open after `done` or turn-level `error` so later turns can
+        reuse the same transport. This is the only supported turn-submission
+        path for the v3 ecosystem.
 
         During a turn, the orchestrator calls RAG Engine over its WebSocket
         retrieval stream and forwards each `RetrievalStreamEvent` inside a
@@ -307,7 +309,8 @@ components:
       type: object
       required: [type, correlationId, request]
       description: |
-        First and only client-to-server message on the streaming WebSocket.
+        Client-to-server message sent once per user turn on the persistent
+        session WebSocket.
         After the orchestrator receives this envelope and validates the
         embedded `request`, it begins emitting `ChatStreamEvent` messages
         until the stream ends with `done` or `error`.

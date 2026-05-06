@@ -39,6 +39,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /v2/embeddings/stream:
+    get:
+      operationId: streamEmbeddings
+      summary: Open a persistent WebSocket embedding stream
+      description: >
+        Upgrade this route to a persistent WebSocket connection. Service callers
+        keep one connection open to the Embedding Service and send one
+        `EmbedStreamMessage` per embedding request over that socket. The service
+        responds with one `EmbedStreamEvent` per completed request and keeps the
+        connection open after `done` or `error` so later embedding requests can
+        reuse the same transport. Multiple embedding requests may be in flight
+        on the same WebSocket; callers route events by `correlationId`.
+      responses:
+        '101':
+          description: WebSocket connection accepted
+        default:
+          description: WebSocket handshake error
   /v2/health:
     get:
       operationId: getHealth
@@ -255,45 +272,88 @@ components:
         meta:
           $ref: '#/components/schemas/ApiMeta'
         data:
-          type: object
-          required:
-            - modelId
-            - dimensions
-            - normalized
-            - inputType
-            - embeddings
-            - generatedAt
-          properties:
-            modelId:
-              type: string
-            dimensions:
-              type: integer
-              minimum: 1
-              description: Length of every returned vector.
-            normalized:
-              type: boolean
-              description: >
-                True when the returned vectors are L2-normalized. Callers use
-                this to choose between dot product and cosine similarity at
-                query time.
-            inputType:
-              type: string
-              enum: [query, document]
-              description: The input type the host actually applied.
-            embeddings:
-              type: array
-              description: >
-                One embedding vector per input text, in the same order as
-                `input.texts`.
-              items:
-                type: array
-                items:
-                  type: number
-            generatedAt:
-              type: string
-              format: date-time
-            appliedOptions:
-              $ref: '#/components/schemas/EmbeddingOptions'
+          $ref: '#/components/schemas/EmbedData'
+    EmbedData:
+      type: object
+      required:
+        - modelId
+        - dimensions
+        - normalized
+        - inputType
+        - embeddings
+        - generatedAt
+      properties:
+        modelId:
+          type: string
+        dimensions:
+          type: integer
+          minimum: 1
+          description: Length of every returned vector.
+        normalized:
+          type: boolean
+          description: >
+            True when the returned vectors are L2-normalized. Callers use
+            this to choose between dot product and cosine similarity at
+            query time.
+        inputType:
+          type: string
+          enum: [query, document]
+          description: The input type the host actually applied.
+        embeddings:
+          type: array
+          description: >
+            One embedding vector per input text, in the same order as
+            `input.texts`.
+          items:
+            type: array
+            items:
+              type: number
+        generatedAt:
+          type: string
+          format: date-time
+        appliedOptions:
+          $ref: '#/components/schemas/EmbeddingOptions'
+    EmbedStreamMessage:
+      type: object
+      required: [type, correlationId, request]
+      properties:
+        type:
+          type: string
+          const: embed
+        correlationId:
+          type: string
+        request:
+          $ref: '#/components/schemas/EmbedRequest'
+    EmbedStreamDoneEvent:
+      type: object
+      required: [type, correlationId, meta, data]
+      properties:
+        type:
+          type: string
+          const: done
+        correlationId:
+          type: string
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        data:
+          $ref: '#/components/schemas/EmbedData'
+    EmbedStreamErrorEvent:
+      type: object
+      required: [type, correlationId, meta, error]
+      properties:
+        type:
+          type: string
+          const: error
+        correlationId:
+          type: string
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+        error:
+          $ref: '#/components/schemas/ErrorBody'
+    EmbedStreamEvent:
+      oneOf:
+        - $ref: '#/components/schemas/EmbedStreamDoneEvent'
+        - $ref: '#/components/schemas/EmbedStreamErrorEvent'
     EmbeddingCapabilities:
       type: object
       required: [textInput, vectorOutput, dimensions]

@@ -50,10 +50,10 @@ Current local implementation status:
 - Exposes `GET /v2/health`.
 - Exposes WebSocket `/v2/retrieval/evidence/stream` for the ecosystem
   retrieval progress path consumed by Chat Orchestrator.
-- Calls the Utility LLM Host over the v2 WebSocket inference stream for
+- Calls the Utility LLM Host over the persistent v2 WebSocket inference stream for
   query support, image observations from `imageUrl`, extraction summaries,
   and evidence shaping.
-- Calls the Embedding Service over HTTP on `127.0.0.1:3002` for query and
+- Calls the Embedding Service over a persistent WebSocket stream for query and
   document embeddings. Live user-path query embeddings use a higher queue
   priority than background indexing.
 - Stores web-derived retrieval knowledge in PostgreSQL database
@@ -72,9 +72,9 @@ Current local implementation status:
 
 ## Streaming Retrieval
 
-The Chat Orchestrator must call WebSocket `/v2/retrieval/evidence/stream`
-for ChatGPT-style visible search progress. After upgrade, the
-Orchestrator sends exactly one message:
+The Chat Orchestrator must keep a persistent WebSocket
+`/v2/retrieval/evidence/stream` for ChatGPT-style visible search progress.
+For each retrieval request, the Orchestrator sends one message:
 
 ```json
 {
@@ -85,8 +85,9 @@ Orchestrator sends exactly one message:
 ```
 
 The embedded `request` is a `RetrieveEvidenceRequest`. The RAG Engine then
-emits one JSON `RetrievalStreamEvent` per WebSocket message and closes
-after `retrieval.completed` or `retrieval.failed`.
+emits one JSON `RetrievalStreamEvent` per WebSocket message for that
+`correlationId` and keeps the WebSocket open after `retrieval.completed` or
+`retrieval.failed`.
 
 The stream is a progress channel, not an answer-generation channel. RAG
 does not own the final chatbot answer or final model context window. The
@@ -120,6 +121,7 @@ Current event types:
 
 `retrieval.completed` contains `data.retrieval`, whose shape is
 `RetrievalPackage` in `openapi/rag-engine.openapi.yaml`.
-`retrieval.failed` is emitted when an error occurs after the WebSocket
-stream has already been established. If validation fails before the stream
-is established, the service emits `retrieval.failed` and closes.
+`retrieval.failed` is emitted when an error occurs after the WebSocket stream
+has already been established. The stream remains open for later retrieval
+requests unless the connection itself is unhealthy or the service is shutting
+down.

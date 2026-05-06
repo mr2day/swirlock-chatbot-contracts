@@ -20,8 +20,10 @@ construction policy, or final user-facing answer ownership.
 ## Final Form
 
 - Full Model Host API:
-  - WebSocket `/v2/infer/stream` for streamed `accepted` / `queued` /
-    `started` / `thinking` / `chunk` / `done` / `error` events.
+  - Persistent WebSocket `/v2/infer/stream` for streamed `accepted` /
+    `queued` / `started` / `thinking` / `chunk` / `done` / `error` events,
+    with multiple in-flight inference requests multiplexed by
+    `correlationId`.
   - `GET /v2/health` for liveness/readiness.
   - `GET /v2/model/status` for hosted model status, capabilities, and
     capacity.

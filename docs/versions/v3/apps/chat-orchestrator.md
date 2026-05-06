@@ -82,16 +82,18 @@ What is built:
   `INTERNAL_INFRASTRUCTURE.md#runtime-configuration-source-of-truth`).
 - Sessions and per-turn user/assistant messages stored whole in a local
   SQLite database. No Context Fragmenter, no memory compression.
-- RAG Engine integration over WebSocket. The orchestrator opens
-  `ws://<rag-engine>/v2/retrieval/evidence/stream`, sends one
-  `retrieve_evidence` message, forwards each returned
-  `RetrievalStreamEvent` to the client as a `retrieval` chat-stream event,
-  and uses `retrieval.completed.data.retrieval` to build the final-answer
-  prompt and citations.
+- RAG Engine integration over WebSocket. The orchestrator keeps a persistent
+  `ws://<rag-engine>/v2/retrieval/evidence/stream` connection, sends one
+  `retrieve_evidence` message per retrieval request, forwards each returned
+  `RetrievalStreamEvent` for that `correlationId` to the client as a
+  `retrieval` chat-stream event, and uses
+  `retrieval.completed.data.retrieval` to build the final-answer prompt and
+  citations.
 - The orchestrator calls a single configured Model Host directly:
-  - WebSocket `/v2/infer/stream` for the streaming endpoint, forwarding
-    `queued` / `started` / `thinking` / `chunk` events through to the
-    client and persisting the assembled assistant message before emitting
+  - Persistent WebSocket `/v2/infer/stream` for Utility LLM classification
+    and final-answer generation, forwarding `queued` / `started` /
+    `thinking` / `chunk` events through to the client for final-answer
+    requests and persisting the assembled assistant message before emitting
     its own terminal `done` event.
   - **Operational substitution**: the configured Model Host slot is
     semantically the Primary LLM Host, but in the current local deployment

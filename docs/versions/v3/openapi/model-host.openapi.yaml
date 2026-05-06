@@ -12,12 +12,18 @@ paths:
   /v2/infer/stream:
     get:
       operationId: streamInfer
-      summary: Open a WebSocket inference stream
+      summary: Open a persistent WebSocket inference stream
       description: |
-        Upgrade this route to a WebSocket connection. After the connection opens,
-        the client sends exactly one `StreamInferMessage`. The server responds
-        with one JSON `StreamEvent` per WebSocket message and closes the
-        connection after `done` or `error`.
+        Upgrade this route to a persistent WebSocket connection. Service callers
+        keep one connection open to the model host and send one
+        `StreamInferMessage` per inference request over that socket. The server
+        responds with one JSON `StreamEvent` per WebSocket message and keeps the
+        connection open after `done` or `error` so later inference requests can
+        reuse the same transport.
+
+        Multiple inference requests may be in flight on the same WebSocket.
+        Every client message and every server event carries a `correlationId`;
+        callers must route interleaved events by that value.
 
         This WebSocket stream is the inference transport for the Swirlock
         ecosystem. It carries thinking text, response chunks, and queue
@@ -263,6 +269,16 @@ components:
           type: string
         request:
           $ref: '#/components/schemas/InferRequest'
+    StreamCancelMessage:
+      type: object
+      required: [type, correlationId]
+      properties:
+        type:
+          type: string
+          const: cancel
+        correlationId:
+          type: string
+          description: Correlation id of the in-flight inference request to cancel.
     QueueWaitInfo:
       type: object
       required: [position, requestsAhead, queueDepth, defaultPriority]
@@ -296,40 +312,48 @@ components:
           format: date-time
     StreamAcceptedEvent:
       type: object
-      required: [type, meta]
+      required: [type, correlationId, meta]
       properties:
         type:
           type: string
           const: accepted
+        correlationId:
+          type: string
         meta:
           $ref: '#/components/schemas/ApiMeta'
     StreamQueuedEvent:
       type: object
-      required: [type, meta, data]
+      required: [type, correlationId, meta, data]
       properties:
         type:
           type: string
           const: queued
+        correlationId:
+          type: string
         meta:
           $ref: '#/components/schemas/ApiMeta'
         data:
           $ref: '#/components/schemas/QueueWaitInfo'
     StreamStartedEvent:
       type: object
-      required: [type, meta]
+      required: [type, correlationId, meta]
       properties:
         type:
           type: string
           const: started
+        correlationId:
+          type: string
         meta:
           $ref: '#/components/schemas/ApiMeta'
     StreamThinkingEvent:
       type: object
-      required: [type, meta, data]
+      required: [type, correlationId, meta, data]
       properties:
         type:
           type: string
           const: thinking
+        correlationId:
+          type: string
         meta:
           $ref: '#/components/schemas/ApiMeta'
         data:
@@ -340,11 +364,13 @@ components:
               type: string
     StreamChunkEvent:
       type: object
-      required: [type, meta, data]
+      required: [type, correlationId, meta, data]
       properties:
         type:
           type: string
           const: chunk
+        correlationId:
+          type: string
         meta:
           $ref: '#/components/schemas/ApiMeta'
         data:
@@ -355,11 +381,13 @@ components:
               type: string
     StreamDoneEvent:
       type: object
-      required: [type, meta, data]
+      required: [type, correlationId, meta, data]
       properties:
         type:
           type: string
           const: done
+        correlationId:
+          type: string
         meta:
           $ref: '#/components/schemas/ApiMeta'
         data:
@@ -373,11 +401,13 @@ components:
               $ref: '#/components/schemas/InferenceOptions'
     StreamErrorEvent:
       type: object
-      required: [type, meta, error]
+      required: [type, correlationId, meta, error]
       properties:
         type:
           type: string
           const: error
+        correlationId:
+          type: string
         meta:
           $ref: '#/components/schemas/ApiMeta'
         error:
