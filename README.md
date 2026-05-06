@@ -47,6 +47,8 @@ Versioned contracts live under `docs/versions/`.
 
 - `docs/versions/v1/` preserves the original draft contracts unchanged.
 - `docs/versions/v2/` contains the revised draft that introduces agnostic Model Host APIs for Primary LLM Host and Utility LLM Host.
+- `docs/versions/v3/` splits app-specific docs under `apps/`.
+- `docs/versions/v4/` is the current breaking transport contract: no ecosystem REST APIs, one persistent WebSocket per app relationship, and one shared envelope.
 
 See `docs/VERSIONING.md` for compatibility and promotion rules.
 
@@ -62,7 +64,7 @@ The top-level `docs/` files currently remain the draft `v1` entry point for:
 The Utility LLM and Embedding Service are intentionally not first-class API contracts in this first pass.
 They are internal infrastructure behind other services.
 
-The `v2` draft changes this by defining a generic Model Host API while keeping model hosts agnostic and health-focused.
+The current implementation target is `v4`.
 
 ## Repository Structure
 
@@ -80,6 +82,8 @@ docs/
   versions/
     v1/
     v2/
+    v3/
+    v4/
 ```
 
 ## Working Rule
