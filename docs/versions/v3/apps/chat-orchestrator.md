@@ -115,8 +115,11 @@ What is built:
 - `x-correlation-id` is honored when supplied by the client and generated
   otherwise. The same correlation ID is forwarded to the RAG Engine and
   Primary LLM Host on the WebSocket turn path.
-- Image input is supported only via `imageUrl`. `imageId` resolution is
-  not implemented and is rejected with a `bad_request` error.
+- Image input is supported via `imageUrl` and client-ingress `imageBase64`.
+  `imageBase64` is forwarded to the configured Model Host for final-answer
+  inference and is not forwarded to RAG Engine, whose current contract accepts
+  only `imageId` / `imageUrl`. `imageId` resolution is not implemented and is
+  rejected with a `bad_request` error.
 - WebSocket bearer auth on the upgrade accepts all three transports listed
   in `API_CONVENTIONS.md#websocket-authentication`.
 

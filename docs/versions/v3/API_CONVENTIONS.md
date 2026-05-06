@@ -132,6 +132,12 @@ Domain service APIs use media references:
 
 Exactly one of `imageId` or `imageUrl` must be supplied for an image input part.
 
+Client-facing Chat Orchestrator APIs may additionally accept `imageBase64` as a
+client-ingress convenience for pasted screenshots or other images that do not
+yet have durable media storage. The Orchestrator should normalize that payload
+before calling other domain services unless the downstream contract explicitly
+accepts direct image payloads.
+
 Model Host APIs may additionally accept direct base64 image payloads because the model host is the final boundary before model inference. A caller with only an `imageId` must resolve it before calling a model host unless that deployment explicitly provides media resolution.
 
 ## Model Host Safety

@@ -174,6 +174,7 @@ components:
       oneOf:
         - required: [imageId]
         - required: [imageUrl]
+        - required: [imageBase64]
       properties:
         type:
           type: string
@@ -183,6 +184,9 @@ components:
         imageUrl:
           type: string
           format: uri
+        imageBase64:
+          type: string
+          description: Base64 image payload. Data URL prefixes are allowed for client-ingress convenience.
         mimeType:
           type: string
     InputPart:
