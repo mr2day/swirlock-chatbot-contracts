@@ -122,6 +122,14 @@ What is built:
   rejected with a `bad_request` error.
 - WebSocket bearer auth on the upgrade accepts all three transports listed
   in `API_CONVENTIONS.md#websocket-authentication`.
+- CORS allow-list for browser clients. The orchestrator's
+  `service.config.cjs` carries an `http.corsOrigins` array; on bootstrap the
+  app calls `enableCors` with `Authorization`, `Content-Type`, and
+  `x-correlation-id` allowed and `x-correlation-id` exposed. The default
+  list permits `http://localhost:4200` and `http://127.0.0.1:4200` so the
+  Angular dev server of `swirlock-chatbot-ui` can reach the orchestrator
+  without proxying. Production deployments narrow the list to the deployed
+  UI URL(s).
 
 What is not yet built:
 

@@ -104,6 +104,20 @@ path:
 - One persona in the registry: **Gigi the Robot**. Its theme drives the
   whole UI. The browser tab title is set from the active persona's
   name via an `effect()` so adding personas later just works.
+- Persona identity (logo + name) lives only in the **left column** —
+  the sidebar carries it on every viewport. On viewports below
+  `768px` the sidebar collapses behind a hamburger drawer, and the
+  same persona logo + name **migrates to the topbar** of the main
+  column so the user always sees who they are talking to. On
+  `≥768px` viewports there is **no topbar** at all; the chat surface
+  is full-bleed beside the always-visible sidebar (matching the
+  ChatGPT desktop layout).
+- ChatGPT-style empty state: when there is no active session or the
+  active session has no messages yet, the main column renders only a
+  centered, muted "How can I help you?" line with the composer ready
+  below. There is no presentation/branding hero or call-to-action
+  button in the chat surface; the act of typing and submitting
+  creates the session and starts the first turn.
 - Sidebar with sessions grouped by relative date (Today / Yesterday /
   Previous 7 days / Previous 30 days / Older), new-chat button,
   delete-on-hover affordance. Sessions list is cached in `localStorage`
