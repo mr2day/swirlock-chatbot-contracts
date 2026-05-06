@@ -45,6 +45,8 @@ code, the running code wins until the document is updated.
 
 ## Apps
 
+- [Chatbot UI](apps/chatbot-ui.md) — `swirlock-chatbot-ui`, the
+  user-facing client (visible name **Gigi the Robot**).
 - [Chat Orchestrator](apps/chat-orchestrator.md)
 - [Context Fragmenter](apps/context-fragmenter.md)
 - [RAG Engine](apps/rag-engine.md)
