@@ -25,6 +25,8 @@ Retrieval progress events are emitted as normal envelope `type` values:
 - `live.search.completed`
 - `live.extract.started`
 - `live.extract.completed`
+- `utility_llm.extraction_summaries.started`
+- `utility_llm.extraction_summaries.completed`
 - `evidence.chunk`
 - `retrieval.completed`
 - `retrieval.failed`
