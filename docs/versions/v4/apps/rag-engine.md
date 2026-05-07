@@ -5,6 +5,12 @@ Endpoint: `WS /v4/retrieval`
 ## Client Messages
 
 - `retrieve_evidence`: payload is `{ "request": RetrieveEvidenceRequest }`.
+  `RetrieveEvidenceRequest.query` may include an optional `userLocation`
+  object (`{ latitude, longitude, accuracyMeters?, capturedAt? }`) when
+  the caller has obtained location permission from the user. The RAG
+  Engine forwards it to the Utility LLM so retrieval queries can be
+  made location-accurate. The RAG Engine never derives or guesses a
+  location on its own.
 - `health.get`
 - `cancel`
 - `heartbeat`
