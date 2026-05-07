@@ -32,3 +32,26 @@ The Chat Orchestrator is the canonical owner of sessions and persisted chat
 messages. UI clients may cache summaries locally, but they reload canonical
 history through `session.get`.
 
+## Conversation Text Integrity
+
+Services must not apply deterministic word, phrase, or regular-expression
+filters to conversational user or assistant text for semantic behavior control,
+including greeting removal, persona enforcement, moderation, language detection,
+intent routing, or safety decisions. The conversation language may be unknown,
+mixed, transliterated, or invented, so lexical filters create silent,
+language-biased behavior.
+
+Any semantic evaluation of conversational text must be performed by an LLM
+through a Model Host call. This evaluation should be part of an existing
+classification, planning, moderation, or final-answer step. Services must not
+add a dedicated extra model turn solely to detect whether a message is a
+greeting.
+
+Services may deterministically act on explicit protocol fields and structured
+LLM outputs, such as a classifier's `intent` or `route`, because the semantic
+text evaluation has already happened inside the model call.
+
+Services may still perform transport-level and structure-level handling that
+does not evaluate natural-language meaning, such as JSON validation, size
+limits, envelope routing, chunk forwarding, persistence, escaping for display,
+and lossless whitespace preservation or trimming at storage boundaries.

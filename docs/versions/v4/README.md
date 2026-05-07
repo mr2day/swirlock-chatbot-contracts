@@ -17,6 +17,9 @@ one persistent WebSocket open and multiplexes application messages by
 - Health, status, and admin commands are WebSocket messages, not REST routes.
 - Local ops-only debug surfaces, when present, are not ecosystem APIs and must
   not appear in these contracts.
+- No deterministic word, phrase, or regular-expression filtering may alter or
+  suppress conversational user or assistant text. Semantic text evaluation must
+  be performed by an LLM through a Model Host call.
 
 ## Canonical Documents
 
@@ -25,4 +28,3 @@ one persistent WebSocket open and multiplexes application messages by
 - `CHATBOT_MANIFEST.md`: service boundaries and endpoint names.
 - `apps/*.md`: app-specific WebSocket message types.
 - `schemas/envelope.schema.json`: machine-readable common envelope.
-
