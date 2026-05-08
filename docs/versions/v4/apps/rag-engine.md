@@ -27,12 +27,15 @@ Retrieval progress events are emitted as normal envelope `type` values:
 - `embedding.query.completed`
 - `local.search.started`
 - `local.search.completed`
+- `retrieval.policy.decided`
 - `live.search.started`
 - `live.search.completed`
 - `live.extract.started`
 - `live.extract.completed`
 - `utility_llm.extraction_summaries.started`
 - `utility_llm.extraction_summaries.completed`
+- `utility_llm.document_retention.started`
+- `utility_llm.document_retention.completed`
 - `evidence.chunk`
 - `retrieval.completed`
 - `retrieval.failed`
@@ -41,4 +44,11 @@ Retrieval progress events are emitted as normal envelope `type` values:
 - `heartbeat`
 
 Each retrieval event payload contains `sequence`, `occurredAt`, and `data`.
+
+`live.search.*` and `live.extract.*` events fire once per live retrieval
+provider (currently `exa` and `wikipedia`) and include
+`data.provider: "exa" | "wikipedia"` so callers can disambiguate.
+`utility_llm.document_retention.*` events report the LLM-governed
+retention pass that decides which live documents to persist into the
+local knowledge store.
 
