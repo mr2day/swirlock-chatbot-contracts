@@ -48,7 +48,8 @@ Versioned contracts live under `docs/versions/`.
 - `docs/versions/v1/` preserves the original draft contracts unchanged.
 - `docs/versions/v2/` contains the revised draft that introduces agnostic Model Host APIs for Primary LLM Host and Utility LLM Host.
 - `docs/versions/v3/` splits app-specific docs under `apps/`.
-- `docs/versions/v4/` is the current breaking transport contract: no ecosystem REST APIs, one persistent WebSocket per app relationship, and one shared envelope.
+- `docs/versions/v4/` introduces the breaking transport contract: no ecosystem REST APIs, one persistent WebSocket per app relationship, and one shared envelope.
+- `docs/versions/v5/` is the current architectural target. It removes the v4 Primary/Utility two-LLM split (operationally incoherent in a sequential turn pipeline), introduces the 1:1 module-to-LLM rule, names the live-conversation LLM the **Vanamonde LLM** (after Arthur C. Clarke's *The City and the Stars*) and the background-consolidation LLM the **Fragmenter LLM**, and promotes the Context Fragmenter to a peer module that shares a SQLite file with the Chat Orchestrator under table-level ownership.
 
 See `docs/VERSIONING.md` for compatibility and promotion rules.
 
@@ -64,7 +65,8 @@ The top-level `docs/` files currently remain the draft `v1` entry point for:
 The Utility LLM and Embedding Service are intentionally not first-class API contracts in this first pass.
 They are internal infrastructure behind other services.
 
-The current implementation target is `v4`.
+The current implementation target is `v5`. `v4` remains supported and the
+two versions can coexist in a running deployment during migration.
 
 ## Repository Structure
 
@@ -84,6 +86,7 @@ docs/
     v2/
     v3/
     v4/
+    v5/
 ```
 
 ## Working Rule
