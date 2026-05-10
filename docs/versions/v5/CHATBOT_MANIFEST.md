@@ -13,6 +13,10 @@
 - `swirlock-chat-orchestrator`: owns sessions, turns, prompt assembly, model
   calls, and retrieval coordination. Consumes one Vanamonde LLM Host and
   commands one Context Fragmenter. Does **not** consume the Fragmenter LLM.
+  Does **not** own persona definitions — clients send their persona as a
+  per-session variable (`name` + `systemPrompt`) on `session.create`; the
+  orchestrator stores it on the session row and pipes `systemPrompt` to
+  the LLM unchanged on every turn.
 - `swirlock-context-fragmenter`: owns background memory consolidation,
   long-term memory formation, and transcript cleanup. Consumes one Fragmenter
   LLM Host. Co-located with the Chat Orchestrator (shared SQLite). Does
