@@ -71,7 +71,10 @@ module they serve.
   text integrity rule, Fragmenter coordination model.
 - `CHATBOT_MANIFEST.md`: service boundaries, endpoint registry, module-to-LLM
   bindings.
-- `apps/*.md`: app-specific WebSocket message types.
+- `apps/*.md`: app-specific WebSocket message types. `apps/idp-base.md`
+  documents the Identity Provider, the only ecosystem app that speaks plain
+  HTTP rather than the WebSocket envelope (it is an OpenID Connect
+  provider; see that file for the rationale).
 - `schemas/envelope.schema.json`: machine-readable common envelope.
 
 ## Migration from v4

@@ -25,6 +25,13 @@
   model. Multiple deployments exist (Vanamonde, Fragmenter, RAG-side) — each
   is a separate process, possibly on a separate machine.
 - `swirlock-embedding-service`: generic embedding model host.
+- `swirlock-idp-base`: OpenID Connect Identity Provider. The only ecosystem
+  app that speaks plain HTTP (not the v5 WebSocket envelope) — see
+  `apps/idp-base.md` for the rationale. Issues JWT access tokens to client
+  apps via Authorization Code + PKCE; hosts the end-user registration and
+  login UI; owns the catalog of registered client apps and end-user
+  accounts. Each resource server (Chat Orchestrator, etc.) validates
+  IdP-issued JWTs via `${IDP_ISSUER}/jwks`.
 
 ## Endpoint Registry
 
@@ -37,6 +44,13 @@
 | Embedding Service | `/v5/embeddings` |
 
 There are no ecosystem REST endpoints in `v5`.
+
+The Identity Provider (`swirlock-idp-base`) is the single documented
+exception: it speaks HTTP under `/oidc/*` because OpenID Connect is an
+RFC-defined HTTP protocol and resource servers must validate tokens against
+its JWKS. The IdP is **not** consumed by any live request-path; it is hit
+only during the authentication redirect dance (by frontends) and during JWKS
+fetch / refresh (by resource servers). See `apps/idp-base.md`.
 
 ## Module-to-LLM Bindings
 

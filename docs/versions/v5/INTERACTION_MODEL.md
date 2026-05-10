@@ -98,6 +98,34 @@ When a session is deleted, the Orchestrator deletes its rows from the live
 tables it owns and notifies the Fragmenter via `session.invalidate`. The
 Fragmenter is responsible for cleaning up its own tables for that session.
 
+## Authentication
+
+End-user authentication runs out of band, before the live turn pipeline.
+The flow is the standard OpenID Connect Authorization Code + PKCE pattern,
+mediated by `swirlock-idp-base`:
+
+1. The frontend (UI, coding agent, robot runtime, etc.) detects that it has
+   no valid access token and redirects the user's browser to
+   `${IDP_ISSUER}/auth?...&client_id=<this-app>&resource=<orchestrator-url>`
+   with a freshly generated PKCE `code_challenge`.
+2. The IdP renders its own server-rendered registration / login UI under
+   `/interaction/:uid`. The frontend never sees the user's password. New
+   end users register inside the IdP (email + password + email-code
+   verification), per-client (see `apps/idp-base.md`).
+3. On success the IdP redirects back to the frontend's `redirect_uri` with a
+   `code`. The frontend exchanges the code at `${IDP_ISSUER}/token` (with
+   the PKCE `code_verifier`) and receives a JWT access token, an ID token,
+   and a refresh token.
+4. The frontend opens its persistent WebSocket to the Chat Orchestrator
+   (`/v5/chat`) with `?token=<access_token>`. The Orchestrator validates
+   the JWT per `API_CONVENTIONS.md` § Authentication.
+5. Subsequent live-turn traffic is over that authenticated socket. The IdP
+   is not on the request path.
+
+When the access token expires, the frontend uses its refresh token to obtain
+a new access token via `${IDP_ISSUER}/token` and reopens the WebSocket if
+needed. RP-initiated logout uses `${IDP_ISSUER}/session/end`.
+
 ## Conversation Text Integrity
 
 Services must not apply deterministic word, phrase, or regular-expression

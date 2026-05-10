@@ -130,11 +130,29 @@ queue ordering.
 
 ## Authentication
 
-Authentication is negotiated during the WebSocket upgrade. Browser clients may
-use `?token=...`; non-browser service clients should use an authorization
-header or deployment-level private network authentication.
+Authentication is negotiated during the WebSocket upgrade. Browser clients
+attach the bearer as `?token=...` (the only transport browsers can use,
+because `WebSocket` cannot set custom headers); non-browser service clients
+use an `Authorization: Bearer <token>` header.
 
 The first application frame must not carry credentials.
+
+The bearer token is an **IdP-issued RS256 JWT access token** produced by the
+Swirlock Identity Provider (`swirlock-idp-base`, see `apps/idp-base.md`).
+Each resource server validates the JWT independently:
+
+1. Look up the JWT's `kid` in a cached copy of `${IDP_ISSUER}/jwks`.
+   Refresh on `kid` miss.
+2. Verify the signature with the matched key.
+3. Verify `iss === ${IDP_ISSUER}`,
+   `aud === <this-resource-server's own resource indicator>`,
+   `exp > now`, `nbf <= now` (when present).
+4. Read `sub` as the user identity.
+
+A static deployment-level shared bearer token is **not** a valid auth scheme
+in v5. v4-era `service.config.cjs` `bearerToken` fields are ignored once a
+service is migrated. During an in-place migration window a service MAY
+accept either, but new deployments do not.
 
 ## Health, Status, And Admin
 
