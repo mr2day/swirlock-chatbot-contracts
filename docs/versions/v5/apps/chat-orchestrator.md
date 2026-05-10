@@ -33,9 +33,10 @@ access to its LLM.
   any persona definition; if `persona` is omitted, the model receives
   no persona system message for that session.
 - `model.status`: payload may be omitted. The orchestrator forwards to
-  the configured LLM Host and returns the model id unchanged. Clients
-  use this to interpolate `${model}` into persona prompt templates
-  before sending `session.create`.
+  the configured LLM Host and returns the model identity + capabilities
+  unchanged. Clients use this to interpolate `${model}` into persona
+  prompt templates and to gate model-dependent UI affordances (e.g.
+  a "Force thinking" toggle).
 - `session.get`: payload is `{ "sessionId": string }`.
 - `session.delete`: payload is `{ "sessionId": string }`.
 - `turn.submit`: payload is `{ "sessionId": string, "request": SubmitTurnRequest }`.
@@ -54,8 +55,12 @@ access to its LLM.
 
 ## Server Events
 
-- `model.status`: payload is `{ "modelId": string }` (e.g. `"gemma3:12b"`).
-  Returned in response to a client `model.status` request.
+- `model.status`: payload is
+  `{ "modelId": string, "thinkingSupported": boolean }` (e.g.
+  `{ "modelId": "gemma3:12b", "thinkingSupported": false }`). Returned
+  in response to a client `model.status` request. `thinkingSupported`
+  reflects the LLM Host's `runtime.thinkingEnabled` flag; clients use
+  it to hide thinking-related UI when the model can't honor it.
 - `session.created`: payload is `{ "sessionId", "createdAt", "status" }`.
 - `session.snapshot`: payload includes session metadata and persisted messages.
 - `session.deleted`: payload is `{ "sessionId", "deleted": true }`.
