@@ -120,6 +120,13 @@ The orchestrator never queries the Fragmenter for consolidation results.
 Consolidation is read directly from the shared SQLite file's Fragmenter-owned
 result tables during prompt assembly.
 
+The `messages` table — owned at the schema level by the orchestrator —
+includes a `hallucination_index INTEGER` column that the **Fragmenter is
+the sole writer of**. The orchestrator creates and maintains the column
+via its own idempotent migration so it remains available to future
+orchestrator code, but never writes to it. See `context-fragmenter.md`
+§"Co-location and Shared SQLite" for the explicit ownership exception.
+
 ## Migration from v4
 
 - Endpoint path moves from `/v4/chat` to `/v5/chat`. An orchestrator

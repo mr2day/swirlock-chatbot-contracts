@@ -47,9 +47,19 @@ Coordination is intentionally minimal:
 2. The Fragmenter decides — using its own scheduling policy — when to run
    consolidation work for that session. Consolidation may include:
    - rolling per-session summaries,
-   - long-term memory candidate extraction,
-   - transcript cleanup (transliteration normalisation, model-output artefact
-     removal),
+   - long-term memory candidate extraction (user identity, persona / app
+     identity),
+   - per-turn hallucination indexing — every assistant turn gets a 0–10
+     score written to the orchestrator-owned `messages.hallucination_index`
+     column (the Fragmenter is the sole writer of that one column),
+   - reality-drift audits and the sleep-time appeal pass over prior
+     audits — both consume the RAG Engine's `search.run` capability over
+     a persistent WS the Fragmenter holds open to `/v5/retrieval`,
+   - experience-lesson distillation per persona (durable behavioural
+     lessons derived from past audits, consumed by the orchestrator's
+     prompt builders),
+   - transcript cleanup (transliteration normalisation, model-output
+     artefact removal),
    - cross-session persona-level memory formation.
 3. When consolidation completes, the Fragmenter writes results into its
    own result tables in the **shared SQLite file** (see
