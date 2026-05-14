@@ -90,8 +90,9 @@ the shared SQLite file and the Orchestrator reads them with plain SQL.
   }
   ```
   `consolidationKind` is a Fragmenter-defined identifier (e.g.
-  `"session.summary"`, `"persona.long_term"`, `"transcript.cleanup"`)
-  describing which result-table family was updated.
+  `"session.summary"`, `"identity.user"`, `"identity.app"`,
+  `"answer.reality_check"`) describing which result-table family was
+  updated.
 - `health`: payload is `{ "status": "ok"|"degraded"|"unavailable", "ready": boolean }`.
 - `error`: standard error envelope.
 - `heartbeat`: standard heartbeat reply.
