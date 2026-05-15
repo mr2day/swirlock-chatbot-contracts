@@ -27,9 +27,13 @@ access to its LLM.
 
 - `session.create`: payload is `{ "request": CreateSessionRequest }`.
   `CreateSessionRequest` may include an optional `persona` object
-  (`{ "name": string, "systemPrompt": string }`) — the client app's
-  persona variable. The orchestrator stores it on the session and pipes
-  `systemPrompt` to the LLM on every turn. The orchestrator does not own
+  (`{ "id"?: string, "name": string, "systemPrompt": string }`) — the
+  client app's persona variable. The orchestrator stores all three
+  fields on the session and pipes `systemPrompt` to the LLM on every
+  turn. `id` is a stable, client-defined kebab-case identifier (e.g.
+  `marcello-voltieri`) used to scope `session.list` so each persona
+  sees only its own conversation history; it is optional for backward
+  compatibility with legacy clients. The orchestrator does not own
   any persona definition; if `persona` is omitted, the model receives
   no persona system message for that session.
 - `model.status`: payload may be omitted. The orchestrator forwards to
@@ -37,7 +41,15 @@ access to its LLM.
   unchanged. Clients use this to interpolate `${model}` into persona
   prompt templates and to gate model-dependent UI affordances (e.g.
   a "Force thinking" toggle).
-- `session.get`: payload is `{ "sessionId": string }`.
+- `session.get`: payload is `{ "sessionId": string }`. Server replies with
+  `session.snapshot`, which now also includes `personaId` and
+  `personaName`.
+- `session.list`: payload is `{ "personaId"?: string }`. When `personaId`
+  is provided the server returns only sessions belonging to that
+  persona; otherwise it returns every session the authenticated user
+  owns. Server replies with `session.listed`. Each row in the
+  response carries `sessionId`, `personaId`, `title`, `createdAt`,
+  `updatedAt`.
 - `session.delete`: payload is `{ "sessionId": string }`.
 - `turn.submit`: payload is `{ "sessionId": string, "request": SubmitTurnRequest }`.
   `SubmitTurnRequest` may include an optional `userLocation` object
